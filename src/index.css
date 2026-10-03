@@ -1,0 +1,99 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply font-sans bg-gray-50 text-gray-900;
+  }
+  a {
+    @apply no-underline text-inherit;
+  }
+  button {
+    @apply font-sans cursor-pointer border-0 outline-none;
+  }
+  input, textarea, select {
+    @apply font-sans outline-none;
+  }
+}
+
+@layer components {
+  .container {
+    @apply w-full max-w-container mx-auto px-4 sm:px-5;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 px-5 py-3 rounded-[10px] font-semibold text-[15px] transition-all duration-200;
+  }
+  .btn-primary {
+    @apply bg-primary text-white hover:bg-primary-dark hover:-translate-y-px;
+  }
+  .btn-secondary {
+    @apply bg-white text-gray-700 border-[1.5px] border-gray-200 hover:border-primary hover:text-primary;
+  }
+  .btn-block {
+    @apply w-full;
+  }
+  .btn-lg {
+    @apply px-7 py-3.5 text-base;
+  }
+  .btn:disabled {
+    @apply opacity-60 cursor-not-allowed transform-none;
+  }
+
+  .card {
+    @apply bg-white rounded-xl p-5 shadow-card border border-gray-100;
+  }
+
+  .form-group {
+    @apply mb-4;
+  }
+  .form-group label {
+    @apply block text-sm font-semibold text-gray-700 mb-1.5;
+  }
+  .form-group input,
+  .form-group textarea,
+  .form-group select {
+    @apply w-full px-3.5 py-2.5 rounded-lg border-[1.5px] border-gray-200 text-sm bg-white
+      focus:border-primary focus:ring-2 focus:ring-primary/15 transition;
+  }
+  .form-group textarea {
+    @apply min-h-[88px] resize-y;
+  }
+
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold;
+  }
+  .badge-info {
+    @apply bg-sky-100 text-sky-800;
+  }
+  .badge-success {
+    @apply bg-green-100 text-green-800;
+  }
+  .badge-warning {
+    @apply bg-amber-100 text-amber-800;
+  }
+  .badge-danger {
+    @apply bg-red-100 text-red-800;
+  }
+
+  /* Keep CSS variable aliases used in inline styles */
+  :root {
+    --primary: #0d6b3a;
+    --primary-dark: #08502c;
+    --primary-light: #e8f5ee;
+    --secondary: #0f172a;
+    --accent: #f59e0b;
+    --danger: #dc2626;
+    --success: #16a34a;
+    --gray-50: #f9fafb;
+    --gray-100: #f3f4f6;
+    --gray-200: #e5e7eb;
+    --gray-300: #d1d5db;
+    --gray-500: #6b7280;
+    --gray-600: #4b5563;
+    --gray-700: #374151;
+    --gray-900: #111827;
+    --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  }
+}
