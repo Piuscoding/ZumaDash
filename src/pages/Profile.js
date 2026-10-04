@@ -4,9 +4,10 @@ import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import { registerPush } from '../services/push';
 import RoleNavbar from '../components/RoleNavbar';
+import { uploadFile } from '../services/upload';
 
 const Profile = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, refreshUser } = useAuth();
   const [form, setForm] = useState({ name: '', phone: '' });
   const [addresses, setAddresses] = useState([]);
   const [newAddr, setNewAddr] = useState({ label: '', description: '', zone: '' });
@@ -35,13 +36,34 @@ const Profile = () => {
     }
   }, [user]);
 
+  const [photoUploading, setPhotoUploading] = useState(false);
+
+  const uploadPhoto = async (e) => {
+    const file = (e.target.files || [])[0];
+    if (!file) return;
+    setPhotoUploading(true);
+    setMessage('');
+    try {
+      const url = await uploadFile(file, 'zumadash/profiles');
+      await api.put('/api/users/me', { profilePhoto: url });
+      if (refreshUser) await refreshUser();
+      setMessage('Profile photo updated');
+    } catch (err) {
+      setMessage(err.response?.data?.message || 'Photo upload failed');
+    } finally {
+      setPhotoUploading(false);
+      e.target.value = '';
+    }
+  };
+
   const saveProfile = async (e) => {
     e.preventDefault();
     setLoading(true);
     setMessage('');
     try {
       await api.put('/api/users/me', form);
-      setMessage('Profile updated. Refresh or re-login to see name everywhere.');
+      if (refreshUser) await refreshUser();
+      setMessage('Profile updated');
     } catch (err) {
       setMessage(err.response?.data?.message || 'Update failed');
     } finally {
@@ -111,6 +133,26 @@ const Profile = () => {
 
         {section === 'profile' && (
           <div className="card">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
+              <div style={{
+                width: 72, height: 72, borderRadius: '50%', overflow: 'hidden',
+                background: 'var(--gray-200)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 28, fontWeight: 700, color: 'var(--gray-500)', flexShrink: 0,
+              }}>
+                {user?.profilePhoto ? (
+                  <img src={user.profilePhoto} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  (user?.name || '?')[0].toUpperCase()
+                )}
+              </div>
+              <div>
+                <label className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: 13, cursor: 'pointer', display: 'inline-block' }}>
+                  {photoUploading ? 'Uploading…' : 'Change photo'}
+                  <input type="file" accept="image/*" hidden disabled={photoUploading} onChange={uploadPhoto} />
+                </label>
+                <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 6 }}>Shown on offers and track</div>
+              </div>
+            </div>
             <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--gray-500)' }}>
               Role: <strong style={{ textTransform: 'capitalize' }}>{user?.role}</strong>
               {user?.role === 'rider' && (

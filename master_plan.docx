@@ -1,0 +1,697 @@
+ ZumaDash – Accomplished Master Plan  
+ As built through Steps 1–5 + earlier core work
+ Platform name: ZumaDash (Zuma Rock / Northern Abuja identity)  
+ Service area only: Dutse · Kubwa · Bwari  
+
+  1. Core product identity
+- Hyper-local delivery marketplace (not a general Bolt clone)
+- Hybrid app: light web (Node + React + MongoDB) + heavy WhatsApp tracking
+- Uploads: Cloudinary  
+- Email: bird.com 
+- WhatsApp: Bird API (templates + free-form fallback)  
+- Auth: JWT + roles Customer / Rider / Admin  
+- Commission model: rider collects full agreed price → remits platform % by bank transfer  
+- Bargaining + suggested price bands  
+- Payment: Cash on Delivery + Bank Transfer (admin-editable account details + confirmation before booking)  
+- Rich text/landmark addresses (GPS optional; photos + WhatsApp status when GPS is weak)  
+
+
+  2. Public / marketing pages
+- Landing page (sections + asset images: hero, how-it-works, why local, individual rider, fleet, trust, CTA)
+- How It Works (`/how-it-works`)
+- For Riders – Individual + Fleet (`/for-riders`)
+- Pricing & Areas (`/pricing`) – same / neighbouring / cross-zone bands
+- Terms – Customers (`/terms-customers`)
+- Terms – Riders (`/terms-riders`)
+- Legacy combined Terms (`/terms`)
+- Navbar + footer links wired  
+
+
+  3. Auth & accounts
+- Register / Login  
+- Guest booking → localStorage pending booking → auto-create job after signup/login  
+- Role-based dashboards  
+- Rider application (`/become-a-rider`) with NIN, bike details, guarantor  
+- Admin must approve rider before rider dashboard access  
+- Profile: name, phone; email display  
+- Forgot-password path exists in email plan (hook points in notify)  
+
+
+  4. Customer features
+- Book delivery multi-step flow (pickup/drop-off text + photos, package size, suggested price, payment method)
+- Bank transfer step: shows admin bank details (account name, number, bank name, amount) → user must confirm before booking  
+- Saved addresses: add / delete / reuse on booking (tap once pickup, again drop-off)  
+- My Deliveries with filters (All / Active / Completed / Cancelled–Dispute)  
+- Track delivery page with status timeline + photo proofs  
+- In-app notifications  
+- Support tickets (chat with admin)  
+- Push notifications (opt-in from Profile + auto after login when VAPID set)  
+
+
+  5. Rider features
+- Available jobs list + make / counter offers  
+- Accept flow → agreed price → commission split stored  
+- Status updates: LIVE → PICKED → DELIVERED with required photo proof where designed  
+- Earnings page + commission owed / paid  
+- Job history (`/rider/history`)  
+- Profile: bike details update after approval  
+- Push for new jobs / offer accepted  
+- WhatsApp alerts (template-first)  
+
+
+  6. Admin features (full control)
+- Overview stats  
+- Riders: list, approve/reject, freeze/unfreeze, commission mark-paid  
+- Customers: list, freeze/unfreeze  
+- Jobs: list, freeze, open dispute  
+- Disputes: resolve → pay rider / customer side / partial  
+- Finance: totals (owed / collected / rider net) + mark commission paid  
+- In-app Notify: all customers or all riders  
+- Email Centre: templates CRUD + send to all customers/riders  
+- Reports: 7/30/90 days – jobs by status, revenue, est. commission, new users, finance  
+- Settings: platform name, logo upload (Cloudinary) or URL, bank details, commission %, editable price bands  
+- Support ticket control (admin side of chat)  
+
+
+  7. Tracking & safety (anti-fraud design)
+- WhatsApp-first status (LIVE / PICKED / DONE) when GPS is unreliable  
+- Photo proof on key status changes  
+- Disputes freeze job/earnings until admin resolves  
+- Mutual evidence (photos, timestamps, trust score fields)  
+- Account freeze for customers or riders  
+- Progressive penalties path via admin tools  
+
+
+ 8. Money model (implemented)
+- Agreed price after bargaining/offers  
+- Rider collects full amount (COD or customer bank-transfer confirm)  
+- Platform commission % of agreed price → `commissionOwed` on rider  
+- Admin marks commission paid when rider remits by bank transfer  
+- No physical office required for settlement  
+
+
+  9. Notifications stack
+- In-app Notification model + list UI  
+- Email events: booking, status, freeze, support, commission, rider application  
+- WhatsApp: Bird free-form + approved templates (`WA_TEMPLATE_NEW_JOB`, `WA_TEMPLATE_STATUS`, `WA_TEMPLATE_OFFER`)  
+- Web Push (VAPID): logo icon/badge, deep link URL; service worker `sw.js`  
+
+
+  10. Technical foundation (as built)
+- Frontend: React (mobile-first), React Router, AuthContext  
+- Backend: Node.js + Express  
+- Database: MongoDB (Users, Jobs, Notifications, SupportTickets, PlatformSettings, EmailTemplates)  
+- File uploads: Cloudinary (single/multi + guest base64 path for pending booking)  
+- Real-time: Socket.io mounted (chat/status ready)  
+- Env-driven: Mongo, JWT, Cloudinary, Bird, VAPID, WhatsApp template slugs, platform name/logo  
+
+
+ 11. Explicitly completed “remaining steps” blocks
+1. Admin customers / disputes / notify / finance  
+2. Full public marketing pages  
+3. Profiles, saved addresses, My Deliveries, rider history/docs  
+4. Email Centre, logo + price bands settings, reports  
+5. Browser push + WhatsApp template hooks  
+
+
+ 12. Ops still required outside code (not “missing features”)
+- Bird WhatsApp template approval in Bird dashboard  
+- Generate and set VAPID keys (`npx web-push generate-vapid-keys`)  
+- Production HTTPS (required for push)  
+- Real MongoDB / Cloudinary / Bird credentials in `.env`  
+- Optional: Firebase if you prefer FCM over pure Web Push  
+
+
+  13. How to use this document later
+Paste this whole block into a new chat and say e.g.:  
+- “Expand ZumaDash from this accomplished master plan: add [feature]”  
+- “Audit this plan against the codebase and implement gaps”  
+- “Add Phase: fleet multi-rider assignment / invoice PDFs / map zones”  
+
+ Single source of truth for what is already built: this document + the latest zip.
+
+
+
+
+ //features to be built now
+
+ PART 0 – What is already built (do not rebuild)
+
+Use this as the base. All NOW work extends it; do not replace these behaviours.
+
+- Hyper-local only: Dutse · Kubwa · Bwari  
+- Roles: Customer, Rider, Admin (Merchant is added in NOW-8)  
+- Book flow, guest pending booking, COD + bank transfer details display  
+- Bargaining / offers, suggested zone price bands  
+- WhatsApp + photo status tracking, Cloudinary uploads  
+- Rider apply (individual), admin approve before rider dashboard  
+- Commission owed, admin mark paid, freeze, disputes  
+- Support tickets, in-app notify, email hooks, web push hooks  
+- Admin: users, jobs, finance, email centre, reports, settings (bank, logo, bands, commission %)  
+- Profile, saved addresses, my deliveries, rider history/earnings  
+
+ How money and jobs already interact (unchanged spine):
+Customer books → riders see job when status allows → offers/agree price → rider runs LIVE → PICKED → DELIVERED → platform commission tracked on rider → admin tools for freeze/dispute.  
+
+NOW features insert gates on that spine (payment approval before riders see job; clearance before earnings are withdrawable) and add merchant, media, profile photo, counter-offer UX, rider public page, and track lightbox—without removing bargaining, WhatsApp tracking, or zone bands.
+
+
+  PART 1 – IMPLEMENT NOW (full set)
+
+These fix trust, money, fleet control, offers UX, and media viewing.
+
+
+ NOW-1 – Bank transfer payment gate (before riders see the job)
+
+ Why now: Stops fake “I paid” bookings and protects riders.
+
+ Process
+1. Customer books and chooses Bank Transfer.  
+2. App shows platform bank details: account name, account number, bank name, amount to pay (from suggested/agreed flow amount at booking).  
+3. Customer confirms “I have transferred” → job status = `pending_payment_approval`.  
+4. While in `pending_payment_approval`, job is not returned by available-jobs APIs and riders are not notified.  
+5. Admin Payment desk lists pending transfers: job id, customer, amount, time, optional customer reference note.  
+6. Admin Approve → status becomes `pending_offers` → notify eligible riders (in-app + WhatsApp + push).  
+7. Admin Reject → customer notified; job cancelled or returned so customer can pay again or switch to COD.  
+8. COD jobs skip this gate → status goes straight to `pending_offers` and riders are notified.
+
+Works with: NOW-14 (queue), NOW-15 (offers only after `pending_offers`), existing bank details in Platform Settings.
+
+Build notes: Extend job status enum; filter `GET available jobs` to exclude `pending_payment_approval`; Payment desk approve/reject endpoints.
+
+
+ NOW-2 – Completion clearance gate (rider earning not auto-withdrawable)
+
+Why now: Stops fake “delivered” from inflating balances.
+
+Process
+1. Rider marks Delivered/Completed and must supply photo and/or video proof (and any existing status media rules).  
+2. Job status → `pending_clearance`.  
+3. Rider’s share for that job is posted to pending clearance, not to available balance.  
+4. Admin opens job timeline + proofs (NOW-5, NOW-16) → Approve completion → amount moves from pending clearance to that rider’s available balance; job can move to `completed`.  
+5. Admin may open dispute or reject clearance → amount stays frozen/pending; job stays non-withdrawable for that earning.  
+6. Rider dashboard always shows three separate figures: Pending clearance · Available · Commission owed.
+
+Works with: NOW-3 (withdraw only from available), NOW-4 (commission), NOW-9 merchant flags, NOW-11 merchant withdraw from rider available only.
+
+Build notes: Never add a delivered job’s rider earning straight into withdrawable balance in one step.
+
+
+  NOW-3 – Rider bank KYC + withdraw page
+
+ Why now: Needed before any real payouts.
+
+ Process – bank details
+1. Rider opens bank details form: bank name, account name, account number.  
+2. Submit → status `submitted`.  
+3. Admin verifies → `approved` or `rejected` (rejection includes reason; rider can resubmit).  
+4. Only an approved bank account may be used as destination for withdrawals.
+
+ Process – withdraw
+1. Rider requests a withdraw amount ≤ available balance (not pending clearance).  
+2. System blocks if `commissionOwed > 0`, or if this rider is merchant-managed and Block rider withdrawals is on (NOW-9).  
+3. Admin pays outside the app, then marks the withdraw request Paid (optional payment reference).  
+4. Rider receives in-app notification + email with amount and outcome.
+
+ Works with: NOW-2 (available balance), NOW-4 (commission block), NOW-11 (merchant path uses same available balance rules).
+
+
+ NOW-4 – Admin settle commission (one job / settle all)
+
+Why now: Matches “no physical office” collection.
+
+ Process
+1. Rider remits platform commission by bank transfer (off-platform or with a reference note the admin can see).  
+2. Admin opens that rider’s finance view → Settle on one commission line (one job) or Settle all for that rider.  
+3. `commissionOwed` is reduced or cleared; a settlement record is stored (who, when, amount, optional note).  
+4. When `commissionOwed` becomes 0, withdraw is no longer blocked by the commission rule (NOW-3).
+
+ Works with: NOW-3, NOW-14 (commission settlements in Payment desk), NOW-10 (merchant sees sum of riders’ commission owed).
+
+
+ NOW-5 – Admin job timeline (exact timestamps)
+
+ Why now: Disputes and clearance depend on it.
+
+ Process
+1. Every status change appends to `statusHistory` with: exact timestamp, actor user id, status label, optional note, optional media urls.  
+2. Typical sequence rows include: Created, Payment approved (or COD skip), Offer accepted, LIVE, PICKED, DELIVERED, Pending clearance, Cleared/Completed, Disputed, Cancelled, etc.  
+3. Admin job detail page shows this list in chronological order.  
+4. Each row that has media is clickable to open that media (same lightbox behaviour as NOW-16 where applicable).
+
+ Works with: NOW-1, NOW-2, NOW-14, disputes, NOW-15 offer accept time.
+
+
+ NOW-6 – Admin view full user/rider/merchant docs and media
+
+Why now: Safe approval of individuals and fleets.
+
+ Process
+1. Admin opens Riders or Merchants → opens one profile.  
+2. Admin sees: contact fields, NIN, guarantor, verification status, freeze status, bike list (for merchant: each bike), images, playable videos, documents.  
+3. Admin Approve, Reject, or Request re-upload (with note).  
+4. Same document viewer is used for individual rider apply (NOW-7) and merchant fleet apply (NOW-8).
+
+
+  NOW-7 – Individual rider apply: bike photos, video, documents
+
+ Why now: Small change, big trust.
+
+ Process
+1. Applicant chooses Individual.  
+2. Existing fields remain (identity, NIN, guarantor, bike plate/model/colour as already designed).  
+3. Additional required/optional as you set: upload bike documents; upload bike photos; optional one bike video.  
+4. Submit → `role: rider`, `verificationStatus: under_review`.  
+5. Admin uses NOW-6 to view media → approve/reject.  
+6. Only when approved does login route to the rider dashboard and allow taking jobs (subject to any later merchant flags if not independent).
+
+  NOW-8 – Merchant (fleet) role – application
+
+ Why now: Foundation for fleet control.
+
+ Process
+1. Applicant chooses Fleet on apply.  
+2. Field Number of bikes (integer N ≥ 1) is shown.  
+3. For each bike `1 … N` (repeatable sections, expand or “+”): bike name/label, plate number, photos, video, documents for that bike.  
+4. Owner-level fields remain (NIN, guarantor, etc.).  
+5. Successful submit → user `role: merchant` (not `rider`), `verificationStatus: under_review`.  
+6. Admin reviews all bikes’ images/videos/documents (NOW-6) → approve or reject.  
+7. When approved, login redirects to Merchant dashboard, not rider dashboard.  
+8. On approval, system creates Bike records linked to that merchant from the submitted bike list (feeds NOW-9).
+
+
+  NOW-9 – Merchant: bikes + create riders + control flags
+
+ Why now: Without this, merchant is only a label.
+
+ Process – bikes
+1. After merchant approval, Bike records exist for that merchant.  
+2. Merchant dashboard lists approved bikes (adding more bikes after approval is later phase; not required in this NOW set).  
+3. Only approved bikes appear in “select bike” when creating a rider.
+
+ Process – create rider
+1. Merchant goes to Add rider.  
+2. Fields: email, password, select bike (approved bikes only), plate number read-only and filled when bike is selected.  
+3. Toggles (merchant-only; stored on rider):  
+   - Allow rider to take jobs  
+   - Suspend rider  
+   - Block rider withdrawals  
+   - Allow merchant to withdraw from this rider’s cleared (available) balance  
+4. Submit → create user `role: rider`, linked `merchantId`, `bikeId`, flags set as chosen.  
+5. Platform emails the rider: account created, login email/password, and what they can or cannot do under merchant settings.  
+6. Rider logs in → rider dashboard. Server enforces flags on job accept and withdraw. Rider may edit personal info (name, phone, profile photo) only—not merchant toggles.
+
+ Process – all riders page
+1. Merchant sees all riders under their account.  
+2. Click a rider → personal summary + all toggles + Save (effects apply immediately on server).  
+3. Delete with confirmation. Rule: block delete if the rider has an active job (`accepted`, `live`, `picked`, or `pending_clearance`); merchant must wait until job is completed, cancelled, or cleared. No silent delete of in-flight delivery accounts.
+
+ Works with: NOW-2/3 (withdraw), NOW-15 (allow take jobs), NOW-11, NOW-17 (fleet vs independent on public profile).
+
+  NOW-10 – Merchant dashboard stats + history
+
+ Why now: Merchants need operational visibility.
+
+ Process
+1. Dashboard stats (for this merchant’s riders only):  
+   - Total deliveries completed  
+   - Total not completed (active / cancelled / disputed as defined in filters)  
+   - Total commission owed (sum of those riders’ `commissionOwed`)  
+   - Total earnings of those riders (show pending clearance vs available if both exist)  
+2. Filters: optional one rider + period (today, one week, one month, one year).  
+3. Some stats as charts (e.g. deliveries over time, earnings over time); some as plain numbers.  
+4. History page: all delivery rows across the fleet with the same rider + period filters (job id, rider, status, amounts, timestamps).
+
+
+  NOW-11 – Merchant withdraw from rider (if allowed)
+
+ Why now: Fleet cash control with strict rules.
+
+ Process
+1. Merchant opens Withdraw, selects one of their riders.  
+2. Allowed only if:  
+   - Toggle  Allow merchant to withdraw from this rider’s account is on, and  
+   - Rider has available balance &gt; 0, and  
+   - Commission block rule is satisfied (same as NOW-3: typically `commissionOwed === 0` unless you explicitly allow merchant withdraw while commission is owed—default is block if commission owed).  
+3. Merchant requests payout amount ≤ that rider’s available balance → funds leave rider available balance; payout destination is merchant’s admin-approved bank account (merchant must complete same bank KYC pattern as riders, approved by admin).  
+4. Rider receives in-app notification + email with amount and time.  
+5. If the toggle is off → API and UI block the action.
+
+
+ NOW-12 – Merchant support + notifications
+
+Why now: Closes the fleet ops loop.
+
+ Process – support
+1. Merchant opens Support and selects recipient type:  
+   - Support → conversation goes to admin  
+   - All riders → message goes to every rider under this merchant  
+   - One rider → message goes to that rider only  
+2. Threads support send and reply for both sides as in existing support chat behaviour.  
+3. Merchant may close tickets/threads with their riders.  
+4. Merchant may not close tickets with admin; only admin closes admin-side support tickets.
+
+ Process – notifications
+1. Merchant receives in-app (and email where configured) events about their riders: offer accepted, delivered, pending clearance, dispute, withdraw, etc.  
+2. Daily summary: email + in-app digest of that day’s deliveries and statuses across the fleet.
+
+
+ NOW-13 – Voice note + video on booking (optional fields)
+
+ Why now: Helps non-map addresses; Cloudinary already available.
+
+ Process
+1. Booking form includes optional voice note (audio), optional short video, plus existing photos.  
+2. Files upload to Cloudinary; URLs stored on the job (pickup/drop/booking media fields as appropriate).  
+3. Visible to assigned/offering riders and to admin.  
+4. Not required to submit a booking (avoids blocking users on poor networks).  
+5. On track page, these media are usable under NOW-16 (play voice, lightbox for video/photos).
+
+
+  NOW-14 – Admin “Payment desk” single queue
+
+ Why now: One daily workflow for money.
+
+ Process
+1. Admin Payment desk uses tabs or filters:  
+   - Pending bank transfers (NOW-1)  
+   - Pending completion clearances (NOW-2)  
+   - Withdraw requests (NOW-3 and merchant-initiated NOW-11)  
+   - Commission settlements (NOW-4)  
+2. Each row shows enough context (job/rider/customer, amount, time) to Approve / Reject / Settle in one or two clicks.  
+3. Actions call the same rules as NOW-1–4 and NOW-11; desk is the UI shell, not a second set of money rules.
+
+
+  NOW-15 – Offers, counter-offers, and rider notifications (marketplace loop)
+ 
+Why now: Completes booking after payment gate; keeps bargaining as the price mechanism.
+
+ Process
+1. When job reaches `pending_offers` (COD immediately after create, or after NOW-1 admin approve for bank transfer), eligible riders receive notifications (in-app + push + WhatsApp as already wired).  
+2. Rider opens available job → submits an offer (price + optional short note).  
+3. Customer sees all open offers for that job.  
+4. For each offer, customer may:  
+   - Accept → that price becomes agreed price; job → `accepted`; other offers closed; rider notified; commission fields calculated from agreed price; or  
+   - Counter-offer a new price on that offer.  
+5. Rider is notified of counter-offer and may Accept counter, Counter again, or Decline.  
+6. Ping-pong continues until one side accepts or the offer is declined/expired by your existing rules.  
+7. After job is `accepted`, no new offers are accepted on that job.  
+8. Merchant flag Allow rider to take jobs / Suspend (NOW-9): if off/suspended, that rider does not receive the job in available list and cannot submit offers.
+
+ Works with: NOW-1 (when notifications fire), NOW-17 (name on offer), existing zone suggested price (suggestion only).
+
+
+  NOW-16 – Profile pictures (customer and rider)
+
+ Why now: Needed for offer cards and rider public page.
+
+ Process
+1. Customer and rider open Profile → upload or change profile picture.  
+2. Image goes to Cloudinary; `profilePhoto` saved on the user.  
+3. Merchant-created riders may set their own profile photo as personal info.  
+4. Photo is shown on: own profile, offer list thumbnails, rider public details page (NOW-17), admin user detail.  
+5. If no photo, show a default avatar.
+
+
+  NOW-17 – Clickable rider name on offers → rider public details page
+
+ Why now: Trust before accepting an offer.
+
+ Process
+1. On the customer offer list (and on track page after assignment, on the assigned rider name), the rider display name is a link.  
+2. Link opens Rider public details page for that rider.  
+3. Page displays only:  
+   - Profile photo  
+   - Name  
+   - Mobile number  
+   - Rating  
+   - Number of completed jobs  
+   - Date joined  
+   - Type: Independent rider or Fleet rider (fleet if `merchantId` is set; otherwise independent)  
+4. Page does not show: NIN, guarantor, documents, bank details, commission owed, merchant control toggles.  
+5. Access policy for this NOW set: customer may open this page from a job where that rider has placed an offer or is assigned (not a global public directory).  
+6. User returns to the offer list or track page without losing job context.
+
+
+ NOW-18 – Track page media lightbox + voice playback
+
+Why now: Both sides need clear proof without leaving the page.
+
+ Process
+1. On the tracking page, pickup photos, drop-off photos, booking photos, status-proof photos, and any video appear as thumbnails (or inline players where appropriate).  
+2. Either customer or rider (or admin viewing the same job) clicks a photo or video → full-size lightbox overlay on the same page.  
+3. Video plays inside the lightbox.  
+4. User closes via control or backdrop click → overlay closes; media return to normal thumbnail size; user remains on the tracking page.  
+5. If a voice note exists on the job, both customer and rider see a play/pause control and can listen without leaving the page.  
+6. Same lightbox pattern is available to admin when opening media from the job timeline (NOW-5).
+
+ Works with: NOW-13 (booking voice/video), status photo proofs already in the product.
+
+
+ PART 2 – How all NOW features work together (single spine)
+
+1.  Apply  
+   - Individual → NOW-7 media → admin NOW-6 → approved rider.  
+   - Fleet → NOW-8 → admin NOW-6 → approved merchant → bikes exist → NOW-9 create riders with flags.
+
+2.  Profile  
+   - Customer/rider set photo (NOW-16). Rider may set bank KYC (NOW-3). Merchant sets merchant bank KYC before NOW-11.
+
+3.  Book 
+   - Optional voice/video/photos (NOW-13).  
+   - COD → `pending_offers`.  
+   - Bank transfer → confirm paid → `pending_payment_approval` → admin Payment desk (NOW-1, NOW-14) → `pending_offers`.
+
+4.  Match
+   - Riders notified (NOW-15), subject to merchant allow/suspend flags.  
+   - Offers + counter-offers until accept (NOW-15).  
+   - Customer opens rider name → public profile photo, phone, rating, completed count, joined, independent/fleet (NOW-17).
+
+5.  Execute  
+   - Track page: status + lightbox media + voice play (NOW-18).  
+   - Timeline logged for admin (NOW-5).
+
+6.  Complete & money 
+   - Rider marks delivered + proof → `pending_clearance` (NOW-2).  
+   - Admin clears on Payment desk → available balance.  
+   - Commission owed until admin settles one/all (NOW-4).  
+   - Rider withdraw to approved bank if available and not blocked (NOW-3).  
+   - Merchant may withdraw from rider available only if toggle on (NOW-11).  
+   - Merchant sees stats/history (NOW-10), support and daily summary (NOW-12).
+
+
+  PART 3 – Job status values this NOW set relies on
+
+Use these consistently (extend existing enum; do not invent parallel silent states):
+
+- `pending_payment_approval` — bank transfer waiting admin  
+- `pending_offers` — visible to riders for offers  
+- `accepted` — price agreed, rider assigned  
+- `live` / `picked` / `delivered` — execution (existing names kept)  
+- `pending_clearance` — delivered, earning not yet available  
+- `completed` — admin cleared completion  
+- `cancelled` / `disputed` / `frozen` — existing handling remains  
+
+COD: skip `pending_payment_approval`.  
+Bank transfer: never notify riders before leaving `pending_payment_approval` via admin approve.
+
+
+  PART 4 – Role login targets after this NOW set
+
+| Role | When allowed into main app | Destination |
+|------|----------------------------|-------------|
+| Customer | Registered | Customer dashboard |
+| Rider (independent) | Admin approved | Rider dashboard |
+| Rider (fleet-created) | Created by merchant; flags apply | Rider dashboard |
+| Merchant | Admin approved fleet application | Merchant dashboard |
+| Admin | Admin account | Admin dashboard |
+
+
+
+ PART 5 – Explicit non-changes in this NOW set
+
+- Bargaining remains the way final price is set; suggested bands remain suggestions only.  
+- WhatsApp + photo tracking remain primary where GPS is weak.  
+- Service area remains Dutse · Kubwa · Bwari only.  
+- Map per-km pricing and AI landmark pricing stay out of this NOW document (later roadmap).  
+- Merchant cannot close admin support tickets.  
+- Rider cannot edit merchant control flags.  
+- Delete fleet rider blocked while they have an active job (rule fixed above).  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+//to be built later
+  PART 2 – IMPLEMENT LATER (solid, but after money + merchant)
+
+ LATER-1 – Hybrid map (only when coordinates exist)
+
+ Process
+1. On book: user may drop pin / search place or use text+landmark only.  
+2. If both pickup and drop have coordinates → store `mapDistanceKm`, show route on track page.  
+3. If not → zero map dependency; WhatsApp + photos + text remain primary.  
+4. Hard or soft block if pin is outside Dutse–Kubwa–Bwari polygon.
+
+
+  LATER-2 – Admin ₦ per km + formula for suggested price
+
+ Process
+1. Settings: rate per km, minimum fare, optional size multipliers.  
+2. When `mapDistanceKm` exists:  
+   `suggested = max(minimum, distance × rate × sizeFactor)`  
+3. Still only a suggestion; offers/bargaining unchanged.  
+4. When no distance → existing zone bands.
+
+
+  LATER-3 – AI / rules-assisted price for non-map jobs
+
+ Process
+1. Inputs: zone, package size, landmark text, optional user “estimated km”, history of similar jobs.  
+2. Output: suggested range + one-line reason.  
+3. Start **rules + averages; add ML only when volume exists.  
+4. Admin on/off + min/max caps.
+
+
+ LATER-4 – Landmark library
+
+ Process
+1. Save successful landmarks from jobs.  
+2. Admin moderate.  
+3. Autocomplete on book; feed LATER-3 pricing.
+
+
+  LATER-5 – Proof pack standard
+
+ Process
+1. Prompt photo at pickup + drop (+ optional voice “handed over”).  
+2. One bundle on track page; optional “share via WhatsApp”.  
+3. Improves dispute outcomes more than GPS.
+
+
+  LATER-6 – Trust badges on offers
+
+ Process
+1. Score from completion rate, disputes, photo compliance, commission behaviour.  
+2. Simple badge on rider offer card for customers.  
+3. Keep non-toxic (no public pile-on).
+
+
+  LATER-7 – Delivery windows
+
+ Process
+1. Optional: morning / afternoon / evening.  
+2. Rider sees window on job card.
+
+
+  LATER-8 – Merchant add more bikes after approval
+
+ Process
+1. Merchant submits extra bike (media + plate) → admin approve → appears in “select bike” for new riders.
+
+
+  LATER-9 – Full fleet assignment console
+
+ Process
+1. Which rider is on which job live.  
+2. Reassign only if no active LIVE (or with rules).  
+3. Don’t build until NOW merchant stats + riders work.
+
+
+  LATER-10 – Offline draft booking for logged-in users
+
+ Process
+1. Auto-save form to localStorage.  
+2. Resume banner on return (guest pending booking already exists).
+
+
+  LATER-11 – Multi-language UI (e.g. Hausa + English)
+
+ Process
+1. Critical screens first: book, track, payment instructions, rider status buttons.
+
+
+  LATER-12 – Automated accounting exports
+
+Process
+1. CSV of jobs, commissions, withdrawals per period for admin/merchant.
+
+
+ PART 3 – Money state machines (copy into any build chat)
+
+  Customer bank transfer
+`created` → `pending_payment_approval` → (admin approve) → `pending_offers` → `accepted` → `live` → `picked` → `delivered` → `pending_clearance` → (admin approve) → `completed`
+
+  Rider balances
+- Pending clearance: delivered, not admin-cleared  
+- Available: cleared, not withdrawn  
+- Commission owed: platform share not settled  
+
+  Withdraw rules (recommended defaults)
+- Rider withdraw: available only; blocked if commission owed > 0 or merchant blocked withdrawals  
+- Merchant withdraw from rider: only if toggle on + available + same commission policy you choose  
+
+  Commission
+On clear/complete: increase rider `commissionOwed` by platform % of agreed price  
+Admin settle one / settle all → decrease owed  
+
+
+  PART 4 – Role & login matrix
+
+| Role | Created how | Login destination if approved |
+|------|-------------|-------------------------------|
+| Customer | Register | `/dashboard` |
+| Rider (individual) | Apply individual | `/rider` |
+| Rider (fleet) | Merchant creates | `/rider` (flags apply) |
+| Merchant | Apply fleet | `/merchant` |
+| Admin | Seeded / manual | `/admin` |
+
+Unapproved merchant/rider → under-review screen, no ops dashboard.
+
+
+ PART 5 – Recommended implementation sequence
+
+ Sprint A (money trust)  
+NOW-1, NOW-2, NOW-3, NOW-4, NOW-5, NOW-14  
+
+ Sprint B (docs + individual media)
+NOW-6, NOW-7, NOW-13  
+
+Sprint C (merchant core)
+NOW-8, NOW-9, NOW-10  
+
+Sprint D (merchant money + comms)
+NOW-11, NOW-12  
+
+Sprint E (map + pricing intelligence) 
+LATER-1, LATER-2, then LATER-3, LATER-4  
+
+Sprint F (standout polish)
+LATER-5, LATER-6, LATER-7, LATER-10
+
+
+ PART 6 – Explicit non-goals (keep product sharp)
+
+- National coverage  
+- Removing bargaining  
+- Forcing map for every address  
+- Instant automatic bank payouts without admin  
+- Rider editing merchant control flags  
+- Merchant closing admin support tickets  
+- Building full AI before you have job history volume  

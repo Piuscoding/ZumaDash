@@ -6,7 +6,7 @@ import { uploadImage } from '../../services/upload';
 import AdminNavbar from '../../components/AdminNavbar';
 import { useBranding } from '../../context/BrandingContext';
 
-const TABS = ['overview', 'riders', 'customers', 'jobs', 'disputes', 'finance', 'notify', 'email', 'reports', 'settings'];
+const TABS = ['overview', 'payment', 'riders', 'merchants', 'customers', 'jobs', 'disputes', 'finance', 'notify', 'email', 'reports', 'settings'];
 
 const AdminDashboard = () => {
   const { user, logout } = useAuth();
@@ -35,6 +35,17 @@ const AdminDashboard = () => {
   const [emailSending, setEmailSending] = useState(false);
   const [payAmount, setPayAmount] = useState({});
   const [reportDays, setReportDays] = useState(30);
+  const [pendingTransfers, setPendingTransfers] = useState([]);
+  const [pendingClearances, setPendingClearances] = useState([]);
+  const [pendingWithdraws, setPendingWithdraws] = useState([]);
+  const [bankKycList, setBankKycList] = useState([]);
+  const [commissionSettlements, setCommissionSettlements] = useState([]);
+  const [paymentSubTab, setPaymentSubTab] = useState('transfers'); // transfers | clearances | withdraws | bank | settlements
+  const [timelineJob, setTimelineJob] = useState(null);
+  const [riderDetail, setRiderDetail] = useState(null);
+  const [merchants, setMerchants] = useState([]);
+  const [merchantDetail, setMerchantDetail] = useState(null);
+  const [trustEdit, setTrustEdit] = useState('');
 
   const fetchData = async () => {
     try {
@@ -56,6 +67,42 @@ const AdminDashboard = () => {
       setDisputes(disputesRes.data.jobs || []);
       setFinance({ riders: financeRes.data.riders || [], totals: financeRes.data.totals || {} });
       setTemplates(tplRes.data.templates || []);
+      try {
+        const mres = await api.get('/api/admin/merchants');
+        setMerchants(mres.data.merchants || []);
+      } catch (_) {
+        setMerchants([]);
+      }
+      try {
+        const pt = await api.get('/api/admin/payment-desk/pending-transfers');
+        setPendingTransfers(pt.data.jobs || []);
+      } catch (_) {
+        setPendingTransfers([]);
+      }
+      try {
+        const pc = await api.get('/api/admin/payment-desk/pending-clearances');
+        setPendingClearances(pc.data.jobs || []);
+      } catch (_) {
+        setPendingClearances([]);
+      }
+      try {
+        const pw = await api.get('/api/admin/payment-desk/withdraws?status=pending');
+        setPendingWithdraws(pw.data.withdraws || []);
+      } catch (_) {
+        setPendingWithdraws([]);
+      }
+      try {
+        const bk = await api.get('/api/admin/riders/bank-kyc?status=submitted');
+        setBankKycList(bk.data.riders || []);
+      } catch (_) {
+        setBankKycList([]);
+      }
+      try {
+        const cs = await api.get('/api/admin/payment-desk/commission-settlements');
+        setCommissionSettlements(cs.data.settlements || []);
+      } catch (_) {
+        setCommissionSettlements([]);
+      }
       const s = settingsRes.data.settings;
       if (s) {
         if (s.bankDetails) setBankForm({ accountName: s.bankDetails.accountName || '', accountNumber: s.bankDetails.accountNumber || '', bankName: s.bankDetails.bankName || '' });
@@ -87,6 +134,34 @@ const AdminDashboard = () => {
     try {
       await api.put(`/api/admin/riders/${id}/verify`, { action });
       setMessage(`Rider ${action}d`);
+      fetchData();
+    } catch (err) { setMessage(err.response?.data?.message || 'Failed'); }
+  };
+  const verifyMerchant = async (id, action) => {
+    try {
+      await api.put(`/api/admin/merchants/${id}/verify`, { action });
+      setMessage(`Merchant ${action}d`);
+      setMerchantDetail(null);
+      fetchData();
+    } catch (err) { setMessage(err.response?.data?.message || 'Failed'); }
+  };
+  const openMerchantDetail = async (id) => {
+    try {
+      const res = await api.get(`/api/admin/merchants/${id}`);
+      setMerchantDetail(res.data);
+    } catch (err) { setMessage(err.response?.data?.message || 'Failed'); }
+  };
+    const sendMerchantDigests = async () => {
+    try {
+      const res = await api.post('/api/admin/merchant-digests/send');
+      setMessage(res.data.message || 'Digests sent');
+    } catch (err) { setMessage(err.response?.data?.message || 'Failed'); }
+  };
+  const approveMerchantBank = async (id, action) => {
+    const reason = action === 'reject' ? (window.prompt('Reason:') || 'Rejected') : '';
+    try {
+      await api.put(`/api/admin/merchants/${id}/bank-kyc`, { action, reason });
+      setMessage(`Merchant bank ${action}d`);
       fetchData();
     } catch (err) { setMessage(err.response?.data?.message || 'Failed'); }
   };
@@ -128,6 +203,119 @@ const AdminDashboard = () => {
       setPayAmount((p) => ({ ...p, [riderId]: '' }));
       fetchData();
     } catch (err) { setMessage(err.response?.data?.message || 'Failed'); }
+  };
+
+  // NOW-4: settle all commission for a rider
+  const settleAllCommission = async (riderId, riderName) => {
+    if (!window.confirm(`Settle ALL commission owed for ${riderName || 'this rider'}?`)) return;
+    try {
+      const res = await api.put(`/api/admin/riders/${riderId}/commission`, { settleAll: true, note: 'Settle all from admin finance' });
+      setMessage(res.data.message || 'All commission settled');
+      fetchData();
+    } catch (err) { setMessage(err.response?.data?.message || 'Failed'); }
+  };
+
+  // NOW-1: approve / reject bank transfer
+  const approvePayment = async (jobId) => {
+    try {
+      const res = await api.put(`/api/admin/jobs/${jobId}/approve-payment`, { note: 'Approved from Payment desk' });
+      setMessage(res.data.message || 'Payment approved');
+      fetchData();
+    } catch (err) { setMessage(err.response?.data?.message || 'Failed'); }
+  };
+  const rejectPayment = async (jobId) => {
+    const reason = window.prompt('Rejection reason (shown to customer):') || 'Bank transfer not verified';
+    try {
+      const res = await api.put(`/api/admin/jobs/${jobId}/reject-payment`, { note: reason });
+      setMessage(res.data.message || 'Payment rejected');
+      fetchData();
+    } catch (err) { setMessage(err.response?.data?.message || 'Failed'); }
+  };
+
+  const approveClearance = async (jobId) => {
+    try {
+      const res = await api.put(`/api/admin/jobs/${jobId}/approve-clearance`, {});
+      setMessage(res.data.message || 'Clearance approved');
+      setTimelineJob(null);
+      fetchData();
+    } catch (err) { setMessage(err.response?.data?.message || 'Failed'); }
+  };
+  const rejectClearance = async (jobId) => {
+    const reason = window.prompt('Reason (optional):') || 'Clearance rejected';
+    const openDispute = window.confirm('Also open dispute?');
+    try {
+      const res = await api.put(`/api/admin/jobs/${jobId}/reject-clearance`, { note: reason, openDispute });
+      setMessage(res.data.message || 'Clearance rejected');
+      fetchData();
+    } catch (err) { setMessage(err.response?.data?.message || 'Failed'); }
+  };
+  const markWithdrawPaid = async (id) => {
+    const ref = window.prompt('Payment reference (optional):') || '';
+    try {
+      const res = await api.put(`/api/admin/withdraws/${id}/mark-paid`, { paymentReference: ref });
+      setMessage(res.data.message || 'Marked paid');
+      fetchData();
+    } catch (err) { setMessage(err.response?.data?.message || 'Failed'); }
+  };
+  const rejectWithdraw = async (id) => {
+    const reason = window.prompt('Rejection reason:') || 'Rejected';
+    try {
+      const res = await api.put(`/api/admin/withdraws/${id}/reject`, { reason });
+      setMessage(res.data.message || 'Withdraw rejected');
+      fetchData();
+    } catch (err) { setMessage(err.response?.data?.message || 'Failed'); }
+  };
+  const reviewBankKyc = async (riderId, action) => {
+    let reason = '';
+    if (action === 'reject') reason = window.prompt('Rejection reason:') || 'Rejected';
+    try {
+      const res = await api.put(`/api/admin/riders/${riderId}/bank-kyc`, { action, reason });
+      setMessage(res.data.message || 'Bank KYC updated');
+      fetchData();
+    } catch (err) { setMessage(err.response?.data?.message || 'Failed'); }
+  };
+  const openRiderDetail = async (riderId) => {
+    try {
+      const res = await api.get(`/api/admin/riders/${riderId}`);
+      const r = { ...res.data.rider, _stats: res.data.stats };
+      setRiderDetail(r);
+      setTrustEdit(String(r.trustScore ?? 100));
+    } catch (err) {
+      setMessage(err.response?.data?.message || 'Failed to load rider');
+    }
+  };
+  const saveTrustScore = async (id) => {
+    try {
+      const res = await api.put(`/api/admin/riders/${id}/trust-score`, { trustScore: Number(trustEdit) });
+      setMessage(res.data.message || 'Trust score updated');
+      setRiderDetail((d) => d ? { ...d, trustScore: res.data.trustScore } : d);
+      fetchData();
+    } catch (err) { setMessage(err.response?.data?.message || 'Failed'); }
+  };
+  const deleteRiderData = async (id, fields) => {
+    if (!window.confirm(`Delete ${fields.join(', ')}?`)) return;
+    try {
+      await api.delete(`/api/admin/riders/${id}/data`, { data: { fields } });
+      setMessage('Data deleted');
+      openRiderDetail(id);
+    } catch (err) { setMessage(err.response?.data?.message || 'Failed'); }
+  };
+  const requestReupload = async (id) => {
+    const note = window.prompt('Note for rider:') || 'Please re-upload documents / bike media';
+    try {
+      await api.put(`/api/admin/riders/${id}/verify`, { action: 'reupload', note });
+      setMessage('Re-upload requested');
+      setRiderDetail(null);
+      fetchData();
+    } catch (err) {
+      setMessage(err.response?.data?.message || 'Failed');
+    }
+  };
+  const openJobTimeline = async (jobId) => {
+    try {
+      const res = await api.get(`/api/admin/jobs/${jobId}`);
+      setTimelineJob(res.data.job);
+    } catch (err) { setMessage(err.response?.data?.message || 'Failed to load timeline'); }
   };
   const sendNotify = async (e) => {
     e.preventDefault();
@@ -247,8 +435,13 @@ const AdminDashboard = () => {
                 {pendingRiders.map((r) => (
                   <div key={r._id} className="card" style={{ marginBottom: 10 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-                      <div><strong>{r.name}</strong><div style={{ fontSize: 13, color: 'var(--gray-500)' }}>{r.email} · {r.phone}</div></div>
-                      <div style={{ display: 'flex', gap: 8 }}>
+                      <div>
+                        <strong>{r.name}</strong>
+                        <div style={{ fontSize: 13, color: 'var(--gray-500)' }}>{r.email} · {r.phone}</div>
+                        <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>NIN: {r.nin || '—'} · {r.riderType || 'individual'}</div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <button className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: 12 }} onClick={() => openRiderDetail(r._id)}>View docs</button>
                         <button className="btn btn-primary" style={{ padding: '6px 12px', fontSize: 12 }} onClick={() => verifyRider(r._id, 'approve')}>Approve</button>
                         <button className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: 12 }} onClick={() => verifyRider(r._id, 'reject')}>Reject</button>
                       </div>
@@ -257,18 +450,145 @@ const AdminDashboard = () => {
                 ))}
                 <h2 style={{ fontSize: 16, margin: '20px 0 12px' }}>All riders</h2>
                 {riders.map((r) => (
-                  <div key={r._id} className="card" style={{ padding: 12, marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div><strong style={{ fontSize: 14 }}>{r.name}</strong> <span className="badge badge-info">{r.verificationStatus}</span>
+                  <div key={r._id} className="card" style={{ padding: 12, marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                    <div>
+                      <strong style={{ fontSize: 14 }}>{r.name}</strong> <span className="badge badge-info">{r.verificationStatus}</span>
                       {r.isFrozen && <span className="badge badge-danger" style={{ marginLeft: 4 }}>Frozen</span>}
                       <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Owed ₦{(r.commissionOwed || 0).toLocaleString()}</div>
                     </div>
-                    <button className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => freezeRider(r._id, !r.isFrozen)}>{r.isFrozen ? 'Unfreeze' : 'Freeze'}</button>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => openRiderDetail(r._id)}>Docs</button>
+                      <button className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => freezeRider(r._id, !r.isFrozen)}>{r.isFrozen ? 'Unfreeze' : 'Freeze'}</button>
+                    </div>
                   </div>
                 ))}
+
+                {riderDetail && (
+                  <div className="card" style={{ marginTop: 20, border: '2px solid var(--primary)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                      <h3 style={{ fontSize: 16, margin: 0 }}>Rider review · {riderDetail.name}</h3>
+                      <button type="button" className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => setRiderDetail(null)}>Close</button>
+                    </div>
+                    <div style={{ fontSize: 13, lineHeight: 1.7, marginBottom: 12 }}>
+                      <div><strong>Contact:</strong> {riderDetail.email} · {riderDetail.phone}</div>
+                      <div><strong>NIN:</strong> {riderDetail.nin || '—'}</div>
+                      <div><strong>Status:</strong> {riderDetail.verificationStatus} {riderDetail.isFrozen ? '· Frozen' : ''}</div>
+                      <div><strong>Guarantor:</strong> {riderDetail.guarantor?.name || '—'} · {riderDetail.guarantor?.phone || ''} · {riderDetail.guarantor?.address || ''}</div>
+                      {riderDetail.verificationNote && <div style={{ color: 'var(--danger)' }}><strong>Note:</strong> {riderDetail.verificationNote}</div>}
+                      <div><strong>Completed jobs:</strong> {riderDetail._stats?.completedJobs ?? '—'}</div>
+                      <div style={{ marginTop: 10 }}>
+                        <strong>Trust score:</strong> {riderDetail.trustScore ?? 100}
+                        <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
+                          {[1,2,3,4,5].map((i) => (
+                            <span key={i} style={{ color: i <= Math.round((riderDetail.trustScore || 0) / 20) ? '#f5a623' : '#e5e7eb', fontSize: 20 }}>★</span>
+                          ))}
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                          <input type="number" min={0} max={100} value={trustEdit} onChange={(e) => setTrustEdit(e.target.value)} style={{ width: 80, padding: 6 }} />
+                          <button type="button" className="btn btn-primary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => saveTrustScore(riderDetail._id)}>Save score</button>
+                        </div>
+                      </div>
+                      <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        <button type="button" className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: 11 }} onClick={() => deleteRiderData(riderDetail._id, ['bikePhotos'])}>Delete photos</button>
+                        <button type="button" className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: 11 }} onClick={() => deleteRiderData(riderDetail._id, ['documents'])}>Delete docs</button>
+                        <button type="button" className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: 11 }} onClick={() => deleteRiderData(riderDetail._id, ['video'])}>Delete video</button>
+                        <button type="button" className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: 11 }} onClick={() => deleteRiderData(riderDetail._id, ['profilePhoto'])}>Delete profile photo</button>
+                      </div>
+                    </div>
+                    {(riderDetail.bikeDetails || []).map((b, i) => (
+                      <div key={i} style={{ marginBottom: 16, paddingTop: 12, borderTop: '1px solid var(--gray-200)' }}>
+                        <strong>Bike {i + 1}:</strong> {b.plateNumber} · {b.model} · {b.color}
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+                          {(b.photoUrls || (b.photoUrl ? [b.photoUrl] : [])).map((u) => (
+                            <a key={u} href={u} target="_blank" rel="noreferrer">
+                              <img src={u} alt="" style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 8 }} />
+                            </a>
+                          ))}
+                        </div>
+                        {b.videoUrl && (
+                          <video src={b.videoUrl} controls style={{ width: '100%', maxHeight: 220, marginTop: 8, borderRadius: 8 }} />
+                        )}
+                        <div style={{ marginTop: 8, fontSize: 12 }}>
+                          {(b.documentUrls || (b.papersUrl ? [b.papersUrl] : [])).map((u) => (
+                            <div key={u}><a href={u} target="_blank" rel="noreferrer">Document</a></div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <button className="btn btn-primary" style={{ padding: '8px 12px', fontSize: 12 }} onClick={() => { verifyRider(riderDetail._id, 'approve'); setRiderDetail(null); }}>Approve</button>
+                      <button className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: 12 }} onClick={() => { verifyRider(riderDetail._id, 'reject'); setRiderDetail(null); }}>Reject</button>
+                      <button className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: 12 }} onClick={() => requestReupload(riderDetail._id)}>Request re-upload</button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
-            {tab === 'customers' && (
+            {tab === 'merchants' && (
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+                  <h2 style={{ fontSize: 16, margin: 0 }}>Fleet merchants</h2>
+                  <button type="button" className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: 12 }} onClick={sendMerchantDigests}>
+                    Send daily digests
+                  </button>
+                </div>
+                {merchants.map((m) => (
+                  <div key={m._id} className="card" style={{ marginBottom: 10, padding: 12 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                      <div>
+                        <strong>{m.name}</strong> <span className="badge badge-info">{m.verificationStatus}</span>
+                        <div style={{ fontSize: 13, color: 'var(--gray-500)' }}>{m.email} · {m.phone}</div>
+                        <div style={{ fontSize: 12 }}>Bikes applied: {m.fleetApplication?.numberOfBikes || m.bikeDetails?.length || 0}</div>
+                        {m.merchantBank?.status && m.merchantBank.status !== 'none' && (
+                          <div style={{ fontSize: 12 }}>Bank: {m.merchantBank.status}</div>
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <button className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => openMerchantDetail(m._id)}>View</button>
+                        {m.verificationStatus === 'under_review' && (
+                          <>
+                            <button className="btn btn-primary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => verifyMerchant(m._id, 'approve')}>Approve</button>
+                            <button className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => verifyMerchant(m._id, 'reject')}>Reject</button>
+                          </>
+                        )}
+                        {m.merchantBank?.status === 'submitted' && (
+                          <>
+                            <button className="btn btn-primary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => approveMerchantBank(m._id, 'approve')}>Approve bank</button>
+                            <button className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => approveMerchantBank(m._id, 'reject')}>Reject bank</button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {merchants.length === 0 && <p style={{ color: 'var(--gray-500)' }}>No merchants yet</p>}
+                {merchantDetail && (
+                  <div className="card" style={{ marginTop: 16, border: '2px solid var(--primary)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <h3 style={{ fontSize: 16 }}>{merchantDetail.merchant?.name}</h3>
+                      <button type="button" className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => setMerchantDetail(null)}>Close</button>
+                    </div>
+                    <p style={{ fontSize: 13 }}>NIN: {merchantDetail.merchant?.nin} · Guarantor: {merchantDetail.merchant?.guarantor?.name}</p>
+                    <h4 style={{ fontSize: 14 }}>Applied bikes</h4>
+                    {(merchantDetail.merchant?.fleetApplication?.bikes || merchantDetail.merchant?.bikeDetails || []).map((b, i) => (
+                      <div key={i} style={{ fontSize: 13, marginBottom: 8 }}>
+                        {b.label || b.plateNumber} · {b.plateNumber}
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+                          {(b.photoUrls || []).map((u) => (
+                            <a key={u} href={u} target="_blank" rel="noreferrer"><img src={u} alt="" style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 6 }} /></a>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                    <h4 style={{ fontSize: 14 }}>Live bikes / riders</h4>
+                    <p style={{ fontSize: 13 }}>{(merchantDetail.bikes || []).length} bike(s) · {(merchantDetail.riders || []).length} rider(s)</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+{tab === 'customers' && (
               <div>
                 {customers.map((c) => (
                   <div key={c._id} className="card" style={{ padding: 12, marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}>
@@ -286,12 +606,37 @@ const AdminDashboard = () => {
                   <div key={j._id} className="card" style={{ padding: 12, marginBottom: 8 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}><strong>{j.jobId}</strong><span className="badge badge-info">{j.status}</span></div>
                     <div style={{ fontSize: 13, color: 'var(--gray-500)' }}>{j.customer?.name} → {j.rider?.name || '—'}</div>
-                    <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+                    <div style={{ fontSize: 12 }}>₦{(j.agreedPrice || j.suggestedPrice || 0).toLocaleString()} · {j.paymentMethod || '—'}</div>
+                    <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <button className="btn btn-primary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => openJobTimeline(j._id)}>View details</button>
                       <button className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => freezeJob(j._id, !j.isFrozen)}>{j.isFrozen ? 'Unfreeze' : 'Freeze'}</button>
                       <button className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: 12, color: 'var(--danger)' }} onClick={() => disputeAction(j._id, 'open')}>Dispute</button>
                     </div>
                   </div>
                 ))}
+                {timelineJob && tab === 'jobs' && (
+                  <div className="card" style={{ marginTop: 16, border: '2px solid var(--primary)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                      <h3 style={{ fontSize: 16, margin: 0 }}>Job {timelineJob.jobId}</h3>
+                      <button type="button" className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => setTimelineJob(null)}>Close</button>
+                    </div>
+                    <div style={{ fontSize: 13, marginBottom: 8 }}>
+                      Status: <strong>{String(timelineJob.status).replace(/_/g, ' ')}</strong>
+                      {' · '}₦{(timelineJob.agreedPrice || timelineJob.suggestedPrice || 0).toLocaleString()}
+                      {' · '}{timelineJob.paymentMethod === 'bank_transfer' ? 'Bank' : 'COD'}
+                    </div>
+                    <div style={{ fontSize: 13 }}>Pickup: {timelineJob.pickup?.description}</div>
+                    <div style={{ fontSize: 13, marginBottom: 8 }}>Drop-off: {timelineJob.dropoff?.description}</div>
+                    {(timelineJob.statusHistory || []).slice().sort((a, b) => new Date(a.timestamp || 0) - new Date(b.timestamp || 0)).map((h, i) => (
+                      <div key={i} style={{ padding: '8px 0', borderBottom: '1px solid var(--gray-200)', fontSize: 13 }}>
+                        <strong>{String(h.status || '').replace(/_/g, ' ')}</strong>
+                        <div style={{ color: 'var(--gray-500)' }}>{h.timestamp ? new Date(h.timestamp).toLocaleString() : ''}{h.updatedBy?.name ? ` · ${h.updatedBy.name}` : ''}</div>
+                        {h.note && <div>{h.note}</div>}
+                        {h.photo && <a href={h.photo} target="_blank" rel="noreferrer">Media</a>}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
@@ -312,7 +657,211 @@ const AdminDashboard = () => {
               </div>
             )}
 
-            {tab === 'finance' && (
+
+            {tab === 'payment' && (
+              <div>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+                  {[
+                    ['transfers', `Transfers (${pendingTransfers.length})`],
+                    ['clearances', `Clearances (${pendingClearances.length})`],
+                    ['withdraws', `Withdraws (${pendingWithdraws.length})`],
+                    ['bank', `Bank KYC (${bankKycList.length})`],
+                    ['settlements', 'Settlements'],
+                  ].map(([key, label]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      className={paymentSubTab === key ? 'btn btn-primary' : 'btn btn-secondary'}
+                      style={{ padding: '8px 12px', fontSize: 12 }}
+                      onClick={() => setPaymentSubTab(key)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                {paymentSubTab === 'transfers' && (
+                  <div>
+                    <p style={{ fontSize: 13, color: 'var(--gray-500)', marginBottom: 12 }}>
+                      Bank-transfer bookings wait here until you approve. Riders are notified only after approval.
+                    </p>
+                    {pendingTransfers.length === 0 ? (
+                      <p style={{ color: 'var(--gray-500)' }}>No pending bank transfers</p>
+                    ) : (
+                      pendingTransfers.map((j) => (
+                        <div key={j._id} className="card" style={{ marginBottom: 12, padding: 14 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                            <div>
+                              <strong>{j.jobId}</strong>
+                              <span className="badge badge-warning" style={{ marginLeft: 8 }}>pending payment</span>
+                              <div style={{ fontSize: 13, marginTop: 6 }}>
+                                <strong>₦{(j.suggestedPrice || 0).toLocaleString()}</strong>
+                                {' · '}
+                                {j.customer?.name || 'Customer'} ({j.customer?.phone || '—'})
+                              </div>
+                              {j.paymentReference && (
+                                <div style={{ fontSize: 12, marginTop: 4, color: 'var(--primary-dark)' }}>Ref: {j.paymentReference}</div>
+                              )}
+                              <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 4 }}>
+                                {j.createdAt ? new Date(j.createdAt).toLocaleString() : ''}
+                              </div>
+                            </div>
+                            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                              <button className="btn btn-primary" style={{ padding: '8px 12px', fontSize: 12 }} onClick={() => approvePayment(j._id)}>Approve</button>
+                              <button className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: 12 }} onClick={() => rejectPayment(j._id)}>Reject</button>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+
+                {paymentSubTab === 'clearances' && (
+                  <div>
+                    <p style={{ fontSize: 13, color: 'var(--gray-500)', marginBottom: 12 }}>
+                      Delivered jobs awaiting completion clearance. Approve moves rider earning to available balance.
+                    </p>
+                    {pendingClearances.length === 0 ? (
+                      <p style={{ color: 'var(--gray-500)' }}>No pending clearances</p>
+                    ) : (
+                      pendingClearances.map((j) => (
+                        <div key={j._id} className="card" style={{ marginBottom: 12, padding: 14 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                            <div>
+                              <strong>{j.jobId}</strong>
+                              <span className="badge badge-warning" style={{ marginLeft: 8 }}>pending clearance</span>
+                              <div style={{ fontSize: 13, marginTop: 6 }}>
+                                Rider: {j.rider?.name || '—'} · Customer: {j.customer?.name || '—'}
+                              </div>
+                              <div style={{ fontSize: 13 }}>
+                                Earning ₦{(j.riderEarning || 0).toLocaleString()} · Commission ₦{(j.commissionAmount || 0).toLocaleString()}
+                                {' · '}{j.paymentMethod === 'bank_transfer' ? 'Bank' : 'COD'}
+                              </div>
+                              {j.proofPhotos?.delivered && (
+                                <a href={j.proofPhotos.delivered} target="_blank" rel="noreferrer" style={{ fontSize: 12 }}>View delivery proof</a>
+                              )}
+                            </div>
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                              <button className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: 12 }} onClick={() => openJobTimeline(j._id)}>Timeline</button>
+                              <button className="btn btn-primary" style={{ padding: '8px 12px', fontSize: 12 }} onClick={() => approveClearance(j._id)}>Approve clearance</button>
+                              <button className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: 12 }} onClick={() => rejectClearance(j._id)}>Reject</button>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+
+                {paymentSubTab === 'withdraws' && (
+                  <div>
+                    {pendingWithdraws.length === 0 ? (
+                      <p style={{ color: 'var(--gray-500)' }}>No pending withdraws</p>
+                    ) : (
+                      pendingWithdraws.map((w) => (
+                        <div key={w._id} className="card" style={{ marginBottom: 12, padding: 14 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                            <div>
+                              <strong>{w.rider?.name || 'Rider'}</strong>
+                              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--primary)' }}>₦{(w.amount || 0).toLocaleString()}</div>
+                              <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>
+                                {w.bankSnapshot?.bankName} · {w.bankSnapshot?.accountName} · {w.bankSnapshot?.accountNumber}
+                              </div>
+                              <div style={{ fontSize: 11, color: 'var(--gray-400)' }}>
+                                {w.createdAt ? new Date(w.createdAt).toLocaleString() : ''}
+                              </div>
+                            </div>
+                            <div style={{ display: 'flex', gap: 8 }}>
+                              <button className="btn btn-primary" style={{ padding: '8px 12px', fontSize: 12 }} onClick={() => markWithdrawPaid(w._id)}>Mark paid</button>
+                              <button className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: 12 }} onClick={() => rejectWithdraw(w._id)}>Reject</button>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+
+                {paymentSubTab === 'bank' && (
+                  <div>
+                    {bankKycList.length === 0 ? (
+                      <p style={{ color: 'var(--gray-500)' }}>No bank KYC submissions</p>
+                    ) : (
+                      bankKycList.map((r) => (
+                        <div key={r._id} className="card" style={{ marginBottom: 12, padding: 14 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                            <div>
+                              <strong>{r.name}</strong>
+                              <div style={{ fontSize: 13 }}>{r.phone} · {r.email}</div>
+                              <div style={{ fontSize: 13, marginTop: 4 }}>
+                                {r.riderBank?.bankName} · {r.riderBank?.accountName} · {r.riderBank?.accountNumber}
+                              </div>
+                            </div>
+                            <div style={{ display: 'flex', gap: 8 }}>
+                              <button className="btn btn-primary" style={{ padding: '8px 12px', fontSize: 12 }} onClick={() => reviewBankKyc(r._id, 'approve')}>Approve</button>
+                              <button className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: 12 }} onClick={() => reviewBankKyc(r._id, 'reject')}>Reject</button>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+
+                {paymentSubTab === 'settlements' && (
+                  <div>
+                    {commissionSettlements.length === 0 ? (
+                      <p style={{ color: 'var(--gray-500)' }}>No settlements yet</p>
+                    ) : (
+                      commissionSettlements.map((s) => (
+                        <div key={s._id} className="card" style={{ marginBottom: 8, padding: 12, display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                          <div>
+                            <strong>{s.rider?.name || 'Rider'}</strong>
+                            <div style={{ fontSize: 13, color: 'var(--primary)', fontWeight: 700 }}>₦{(s.amount || 0).toLocaleString()}</div>
+                            <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>{s.note || '—'}{s.job?.jobId ? ` · Job ${s.job.jobId}` : ''}</div>
+                          </div>
+                          <div style={{ fontSize: 12, color: 'var(--gray-500)', textAlign: 'right' }}>
+                            {s.createdAt ? new Date(s.createdAt).toLocaleString() : ''}
+                            <div>by {s.settledBy?.name || 'admin'}</div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+
+                {/* NOW-5 timeline modal-ish panel */}
+                {timelineJob && (
+                  <div className="card" style={{ marginTop: 20, border: '2px solid var(--primary)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                      <h3 style={{ fontSize: 16, margin: 0 }}>Timeline · {timelineJob.jobId}</h3>
+                      <button type="button" className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => setTimelineJob(null)}>Close</button>
+                    </div>
+                    <div style={{ fontSize: 13, marginBottom: 8 }}>
+                      Status: <strong>{String(timelineJob.status).replace(/_/g, ' ')}</strong>
+                      {' · '}{timelineJob.paymentMethod === 'bank_transfer' ? 'Bank transfer' : 'COD'}
+                    </div>
+                    {(timelineJob.statusHistory || []).slice().sort((a, b) => new Date(a.timestamp || 0) - new Date(b.timestamp || 0)).map((h, i) => (
+                      <div key={i} style={{ padding: '10px 0', borderBottom: '1px solid var(--gray-200)', fontSize: 13 }}>
+                        <div style={{ fontWeight: 600 }}>{String(h.status || '').replace(/_/g, ' ')}</div>
+                        <div style={{ color: 'var(--gray-500)' }}>
+                          {h.timestamp ? new Date(h.timestamp).toLocaleString() : ''}
+                          {h.updatedBy?.name ? ` · ${h.updatedBy.name}` : ''}
+                          {h.updatedBy?.role ? ` (${h.updatedBy.role})` : ''}
+                        </div>
+                        {h.note && <div style={{ marginTop: 4 }}>{h.note}</div>}
+                        {h.photo && (
+                          <a href={h.photo} target="_blank" rel="noreferrer" style={{ fontSize: 12 }}>View media</a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+{tab === 'finance' && (
               <div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 20 }}>
                   <div className="card" style={{ textAlign: 'center' }}><div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Owed</div><div style={{ fontSize: 20, fontWeight: 800, color: 'var(--danger)' }}>₦{(finance.totals.owed || 0).toLocaleString()}</div></div>
@@ -321,13 +870,21 @@ const AdminDashboard = () => {
                 </div>
                 {finance.riders.map((r) => (
                   <div key={r._id} className="card" style={{ padding: 12, marginBottom: 8, display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-                    <div><strong>{r.name}</strong><div style={{ color: 'var(--danger)', fontWeight: 700 }}>₦{(r.commissionOwed || 0).toLocaleString()}</div></div>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <input type="number" placeholder="Paid" value={payAmount[r._id] || ''} onChange={(e) => setPayAmount({ ...payAmount, [r._id]: e.target.value })} style={{ width: 100, padding: 8, borderRadius: 8, border: '1px solid var(--gray-200)' }} />
-                      <button className="btn btn-primary" style={{ padding: '8px 12px', fontSize: 12 }} onClick={() => markCommission(r._id)}>Mark paid</button>
+                    <div>
+                      <strong>{r.name}</strong>
+                      <div style={{ color: 'var(--danger)', fontWeight: 700 }}>₦{(r.commissionOwed || 0).toLocaleString()} owed</div>
+                      <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>{r.phone || r.email || ''}</div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <input type="number" placeholder="Amount" value={payAmount[r._id] || ''} onChange={(e) => setPayAmount({ ...payAmount, [r._id]: e.target.value })} style={{ width: 100, padding: 8, borderRadius: 8, border: '1px solid var(--gray-200)' }} />
+                      <button className="btn btn-primary" style={{ padding: '8px 12px', fontSize: 12 }} onClick={() => markCommission(r._id)}>Settle amount</button>
+                      <button className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: 12 }} onClick={() => settleAllCommission(r._id, r.name)} disabled={!r.commissionOwed}>
+                        Settle all
+                      </button>
                     </div>
                   </div>
                 ))}
+                {finance.riders.length === 0 && <p style={{ color: 'var(--gray-500)' }}>No riders with commission owed</p>}
               </div>
             )}
 
@@ -339,6 +896,7 @@ const AdminDashboard = () => {
                     <select value={notifyForm.audience} onChange={(e) => setNotifyForm({ ...notifyForm, audience: e.target.value })}>
                       <option value="all_customers">All customers</option>
                       <option value="all_riders">All riders</option>
+                        <option value="all_merchants">All merchants</option>
                     </select>
                   </div>
                   <div className="form-group"><label>Title</label><input required value={notifyForm.title} onChange={(e) => setNotifyForm({ ...notifyForm, title: e.target.value })} /></div>
@@ -357,6 +915,7 @@ const AdminDashboard = () => {
                       <select value={emailForm.audience} onChange={(e) => setEmailForm({ ...emailForm, audience: e.target.value })}>
                         <option value="all_customers">All customers</option>
                         <option value="all_riders">All riders</option>
+                        <option value="all_merchants">All merchants</option>
                       </select>
                     </div>
                     <div className="form-group"><label>Use template (optional)</label>

@@ -50,6 +50,8 @@ const TermsRiders = () => (
 
       <p style={{ marginTop: 32, fontSize: 13, color: 'var(--gray-500)' }}>
         Last updated: October 2026 · <Link to="/terms-customers" style={{ color: 'var(--primary)' }}>Customer Terms</Link>
+        {' · '}
+        <Link to="/terms-merchants" style={{ color: 'var(--primary)' }}>Merchant Terms</Link>
       </p>
     </div>
   </div>

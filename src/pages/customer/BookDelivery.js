@@ -4,7 +4,7 @@ import CustomerNavbar from '../../components/CustomerNavbar';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { savePendingBooking, getPendingBooking } from '../../utils/pendingBooking';
-import { uploadImage, fileToDataUrl } from '../../services/upload';
+import { uploadImage, uploadFile, fileToDataUrl } from '../../services/upload';
 // saved addresses loaded when authenticated
 
 const BookDelivery = () => {
@@ -30,6 +30,9 @@ const BookDelivery = () => {
     suggestedPrice: 1500,
     pickupPhotos: [],
     dropoffPhotos: [],
+    paymentReference: '',
+    bookingVoiceNote: '',
+    bookingVideo: '',
   });
 
   useEffect(() => {
@@ -99,7 +102,28 @@ const BookDelivery = () => {
     }
   };
 
-  const removePhoto = (field, index) => {
+  const handleMediaFile = async (e, field, kind) => {
+    const file = (e.target.files || [])[0];
+    if (!file) return;
+    setUploading(true);
+    setError('');
+    try {
+      let url;
+      if (isAuthenticated) {
+        url = await uploadFile(file, `zumadash/booking/${kind}`);
+      } else {
+        url = await fileToDataUrl(file);
+      }
+      setForm((prev) => ({ ...prev, [field]: url }));
+    } catch (err) {
+      setError(err.response?.data?.message || 'Media upload failed');
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  };
+
+    const removePhoto = (field, index) => {
     setForm((prev) => ({
       ...prev,
       [field]: prev[field].filter((_, i) => i !== index),
@@ -118,6 +142,7 @@ const BookDelivery = () => {
     contactPhone: user?.phone || '',
     pickupPhotos: form.pickupPhotos,
     dropoffPhotos: form.dropoffPhotos,
+    paymentReference: form.paymentReference || '',
   });
 
   const createJobNow = async () => {
@@ -140,10 +165,15 @@ const BookDelivery = () => {
         suggestedPrice: Number(form.suggestedPrice),
         paymentMethod: form.paymentMethod,
         distanceBand: 'same_zone',
+        paymentReference: form.paymentMethod === 'bank_transfer' ? (form.paymentReference || '').trim() || null : null,
+        bookingVoiceNote: form.bookingVoiceNote && !String(form.bookingVoiceNote).startsWith('data:') ? form.bookingVoiceNote : null,
+        bookingVideo: form.bookingVideo && !String(form.bookingVideo).startsWith('data:') ? form.bookingVideo : null,
       };
 
       const res = await api.post('/api/jobs', payload);
-      navigate(`/track/${res.data.job._id}`);
+      const job = res.data.job;
+      // Always go to track; status (e.g. pending_payment_approval) shows there
+      navigate(`/track/${job._id}`);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to create delivery. Please try again.');
     } finally {
@@ -265,6 +295,7 @@ const BookDelivery = () => {
             </div>
           )}
 
+
           {step === 1 && (
             <>
               {isAuthenticated && savedAddresses.length > 0 && (
@@ -330,7 +361,30 @@ const BookDelivery = () => {
 
           {step === 2 && (
             <>
+              
               <div className="form-group">
+                <label>Voice note (optional)</label>
+                <input type="file" accept="audio/*" disabled={uploading} onChange={(e) => handleMediaFile(e, 'bookingVoiceNote', 'voice')} />
+                <small style={{ color: 'var(--gray-500)', fontSize: 12 }}>Short audio for landmarks / instructions.</small>
+                {form.bookingVoiceNote && (
+                  <div style={{ marginTop: 8 }}>
+                    <audio controls src={form.bookingVoiceNote} style={{ width: '100%', maxWidth: 320 }} />
+                    <button type="button" className="btn btn-secondary" style={{ marginTop: 6, padding: '4px 10px', fontSize: 12 }} onClick={() => setForm((f) => ({ ...f, bookingVoiceNote: '' }))}>Remove</button>
+                  </div>
+                )}
+              </div>
+              <div className="form-group">
+                <label>Short video (optional)</label>
+                <input type="file" accept="video/*" disabled={uploading} onChange={(e) => handleMediaFile(e, 'bookingVideo', 'video')} />
+                <small style={{ color: 'var(--gray-500)', fontSize: 12 }}>Optional. Keep it short for faster upload.</small>
+                {form.bookingVideo && (
+                  <div style={{ marginTop: 8 }}>
+                    <video src={form.bookingVideo} controls style={{ width: '100%', maxWidth: 320, borderRadius: 8 }} />
+                    <button type="button" className="btn btn-secondary" style={{ marginTop: 6, padding: '4px 10px', fontSize: 12 }} onClick={() => setForm((f) => ({ ...f, bookingVideo: '' }))}>Remove</button>
+                  </div>
+                )}
+              </div>
+<div className="form-group">
                 <label>Package Size</label>
                 <select name="packageSize" value={form.packageSize} onChange={handleChange}>
                   <option value="small">Small (documents, small items)</option>
@@ -400,10 +454,21 @@ const BookDelivery = () => {
                   </div>
                 </div>
               </div>
+              <div className="form-group">
+                <label>Payment reference / note (optional)</label>
+                <input
+                  type="text"
+                  name="paymentReference"
+                  value={form.paymentReference}
+                  onChange={handleChange}
+                  placeholder="e.g. transfer ref or sender name"
+                />
+                <small style={{ color: 'var(--gray-500)', fontSize: 12 }}>Helps admin match your transfer.</small>
+              </div>
               <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 20, cursor: 'pointer' }}>
                 <input type="checkbox" checked={paymentConfirmed} onChange={(e) => setPaymentConfirmed(e.target.checked)} style={{ marginTop: 3, width: 18, height: 18 }} />
                 <span style={{ fontSize: 14 }}>
-                  I confirm transfer of ₦{Number(form.suggestedPrice).toLocaleString()} to the account above.
+                  I confirm I have transferred ₦{Number(form.suggestedPrice).toLocaleString()} to the account above. My job will wait for admin approval before riders can offer.
                 </span>
               </label>
               <div style={{ display: 'flex', gap: 12 }}>

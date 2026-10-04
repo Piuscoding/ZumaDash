@@ -51,20 +51,25 @@ const RiderDashboard = () => {
         </div>
 
         {/* Stats cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 28 }}>
-          <div className="card" style={{ textAlign: 'center', padding: 16 }}>
-            <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--primary)' }}>{activeJobs.length}</div>
-            <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Active Jobs</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10, marginBottom: 28 }}>
+          <div className="card" style={{ textAlign: 'center', padding: 14 }}>
+            <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--primary)' }}>{activeJobs.length}</div>
+            <div style={{ fontSize: 11, color: 'var(--gray-500)' }}>Active</div>
           </div>
-          <div className="card" style={{ textAlign: 'center', padding: 16 }}>
-            <div style={{ fontSize: 22, fontWeight: 800 }}>₦{(user?.totalEarnings || 0).toLocaleString()}</div>
-            <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Total Earned</div>
+          <div className="card" style={{ textAlign: 'center', padding: 14 }}>
+            <div style={{ fontSize: 18, fontWeight: 800, color: '#b45309' }}>₦{(user?.pendingClearance || 0).toLocaleString()}</div>
+            <div style={{ fontSize: 11, color: 'var(--gray-500)' }}>Pending clear</div>
           </div>
-          <div className="card" style={{ textAlign: 'center', padding: 16 }}>
-            <div style={{ fontSize: 22, fontWeight: 800, color: (user?.commissionOwed || 0) > 0 ? 'var(--danger)' : 'var(--success)' }}>
+          <div className="card" style={{ textAlign: 'center', padding: 14 }}>
+            <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--primary)' }}>₦{(user?.availableBalance || 0).toLocaleString()}</div>
+            <div style={{ fontSize: 11, color: 'var(--gray-500)' }}>Available</div>
+          </div>
+          <div className="card" style={{ textAlign: 'center', padding: 14 }}>
+            <div style={{ fontSize: 18, fontWeight: 800, color: (user?.commissionOwed || 0) > 0 ? 'var(--danger)' : 'var(--success)' }}>
               ₦{(user?.commissionOwed || 0).toLocaleString()}
             </div>
-            <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Commission Owed</div>
+            <div style={{ fontSize: 11, color: 'var(--gray-500)' }}>Comm. owed</div>
+            <div style={{ fontSize: 10, color: 'var(--gray-400)' }}>COD only</div>
           </div>
         </div>
 

@@ -17,7 +17,7 @@ const MyDeliveries = () => {
 
   const filtered = jobs.filter((j) => {
     if (filter === 'all') return true;
-    if (filter === 'active') return ['pending_offers', 'accepted', 'live', 'picked'].includes(j.status);
+    if (filter === 'active') return ['pending_payment_approval', 'pending_offers', 'accepted', 'live', 'picked', 'pending_clearance'].includes(j.status);
     if (filter === 'done') return ['delivered', 'completed'].includes(j.status);
     if (filter === 'other') return ['cancelled', 'disputed', 'frozen'].includes(j.status);
     return true;

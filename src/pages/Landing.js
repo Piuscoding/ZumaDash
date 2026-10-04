@@ -178,6 +178,9 @@ const Landing = () => {
                 <Link to="/become-a-rider" className="btn btn-primary btn-block">
                   Apply as Fleet Owner
                 </Link>
+                <Link to="/terms-merchants" style={{ display: 'block', textAlign: 'center', marginTop: 10, fontSize: 13, color: 'var(--primary)', fontWeight: 600 }}>
+                  Merchant / fleet terms
+                </Link>
               </div>
             </div>
           </div>
@@ -241,6 +244,7 @@ const Landing = () => {
               <Link to="/how-it-works">How it works</Link>
               <Link to="/pricing">Pricing & Areas</Link>
               <Link to="/for-riders">For Riders</Link>
+              <Link to="/terms-merchants">For Merchants</Link>
               <Link to="/book">Book a delivery</Link>
             </div>
             <div className="footer-col">
@@ -254,7 +258,9 @@ const Landing = () => {
                 </>
               )}
               <Link to="/become-a-rider">Become a rider</Link>
-              <Link to="/terms-customers">Terms</Link>
+              <Link to="/terms-customers">Customer terms</Link>
+              <Link to="/terms-riders">Rider terms</Link>
+              <Link to="/terms-merchants">Merchant terms</Link>
               <Link to="/support">Support</Link>
             </div>
           </div>

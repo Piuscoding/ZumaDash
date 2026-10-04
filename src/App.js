@@ -7,12 +7,14 @@ import Landing from './pages/Landing';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import RiderApply from './pages/RiderApply';
+import RiderPublic from './pages/RiderPublic';
 import HowItWorks from './pages/HowItWorks';
 import ForRiders from './pages/ForRiders';
 import Terms from './pages/Terms';
 import Pricing from './pages/Pricing';
 import TermsCustomers from './pages/TermsCustomers';
 import TermsRiders from './pages/TermsRiders';
+import TermsMerchants from './pages/TermsMerchants';
 
 // Customer Pages
 import CustomerDashboard from './pages/customer/Dashboard';
@@ -28,6 +30,7 @@ import JobHistory from './pages/rider/JobHistory';
 
 // Admin Pages
 import AdminDashboard from './pages/admin/Dashboard';
+import MerchantDashboard from './pages/merchant/Dashboard';
 
 // Shared
 import Notifications from './pages/Notifications';
@@ -39,9 +42,9 @@ const PrivateRoute = ({ children, roles }) => {
   if (loading) return <div style={{ padding: 40, textAlign: 'center' }}>Loading...</div>;
   if (!isAuthenticated) return <Navigate to="/login" />;
   if (roles && !roles.includes(user.role)) {
-    // Redirect based on role
     if (user.role === 'rider') return <Navigate to="/rider" />;
     if (user.role === 'admin') return <Navigate to="/admin" />;
+    if (user.role === 'merchant') return <Navigate to="/merchant" />;
     return <Navigate to="/dashboard" />;
   }
   return children;
@@ -56,12 +59,14 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/become-a-rider" element={<RiderApply />} />
+        <Route path="/riders/:id" element={<PrivateRoute><RiderPublic /></PrivateRoute>} />
         <Route path="/how-it-works" element={<HowItWorks />} />
         <Route path="/for-riders" element={<ForRiders />} />
         <Route path="/terms" element={<Terms />} />
         <Route path="/pricing" element={<Pricing />} />
         <Route path="/terms-customers" element={<TermsCustomers />} />
         <Route path="/terms-riders" element={<TermsRiders />} />
+        <Route path="/terms-merchants" element={<TermsMerchants />} />
 
         {/* Customer */}
         <Route path="/dashboard" element={<PrivateRoute roles={['customer']}><CustomerDashboard /></PrivateRoute>} />
@@ -77,6 +82,9 @@ function App() {
 
         {/* Admin */}
         <Route path="/admin" element={<PrivateRoute roles={['admin']}><AdminDashboard /></PrivateRoute>} />
+
+        {/* Merchant */}
+        <Route path="/merchant" element={<PrivateRoute roles={['merchant']}><MerchantDashboard /></PrivateRoute>} />
 
         {/* Shared authenticated */}
         <Route path="/notifications" element={<PrivateRoute><Notifications /></PrivateRoute>} />

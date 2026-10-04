@@ -43,6 +43,7 @@ const Login = () => {
 
       if (user.role === 'rider') navigate('/rider');
       else if (user.role === 'admin') navigate('/admin');
+      else if (user.role === 'merchant') navigate('/merchant');
       else navigate(location.state?.from || '/dashboard');
     } catch (err) {
       setError(err.response?.data?.message || 'Login failed. Please try again.');
