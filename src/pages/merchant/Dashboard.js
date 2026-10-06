@@ -431,7 +431,13 @@ const MerchantDashboard = () => {
             {history.map((j) => (
               <div key={j._id} className="card" style={{ marginBottom: 8, padding: 12, fontSize: 13 }}>
                 <strong>{j.jobId}</strong> · {j.rider?.name} · {String(j.status).replace(/_/g, ' ')}
+                {j.locationMode === 'map' && <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--primary)' }}>map</span>}
                 <div>₦{(j.agreedPrice || 0).toLocaleString()} · {j.createdAt ? new Date(j.createdAt).toLocaleString() : ''}</div>
+                <Link to={`/track/${j._id}`} style={{ display: 'inline-block', marginTop: 6, fontSize: 12, fontWeight: 700, color: 'var(--primary)' }}>
+                  {j.locationMode === 'map' && ['accepted', 'live', 'picked'].includes(j.status)
+                    ? 'Open live map'
+                    : 'Open track'}
+                </Link>
               </div>
             ))}
             {history.length === 0 && <p style={{ color: 'var(--gray-500)' }}>No jobs in this period</p>}

@@ -79,7 +79,7 @@ const MobileMenu = ({ open, onClose, links, variant = 'public' }) => {
         </nav>
 
         <div className="px-5 py-4 border-t border-white/10 text-xs text-white/50">
-          Dutse · Kubwa · Bwari
+          Dutse · Kubwa · Bwari · Ushafa
         </div>
       </aside>
     </>

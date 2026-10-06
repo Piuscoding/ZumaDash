@@ -28,6 +28,15 @@ const AdminDashboard = () => {
   const [logoUrl, setLogoUrl] = useState('');
   const [priceBands, setPriceBands] = useState(null);
   const [settingsSaving, setSettingsSaving] = useState(false);
+  const [mapBookingEnabled, setMapBookingEnabled] = useState(false);
+  const [etaCalibration, setEtaCalibration] = useState(1.75);
+  const [mapPricing, setMapPricing] = useState({ baseFare: 500, ratePerKm: 200, includedKm: 2, minimumFare: 800 });
+  const [vatPercent, setVatPercent] = useState(0);
+  const [allIndepPct, setAllIndepPct] = useState('');
+  const [allMerchPct, setAllMerchPct] = useState('');
+  const [riderMarkerUrl, setRiderMarkerUrl] = useState('');
+  const [messagingProvider, setMessagingProvider] = useState('bird');
+  const [emailProvider, setEmailProvider] = useState('bird');
   const [notifyForm, setNotifyForm] = useState({ audience: 'all_customers', title: '', message: '' });
   const [emailForm, setEmailForm] = useState({ audience: 'all_customers', subject: '', html: '', templateId: '' });
   const [tplForm, setTplForm] = useState({ name: '', subject: '', body: '', signature: '', category: 'general' });
@@ -110,6 +119,20 @@ const AdminDashboard = () => {
         if (s.platformName) setPlatformName(s.platformName);
         if (s.logoUrl || s.platformLogo) setLogoUrl(s.logoUrl || s.platformLogo || '');
         if (s.priceBands) setPriceBands(JSON.parse(JSON.stringify(s.priceBands)));
+        setMapBookingEnabled(!!s.mapBookingEnabled);
+        if (s.etaCalibration != null) setEtaCalibration(s.etaCalibration);
+        if (s.mapPricing) setMapPricing({
+          baseFare: s.mapPricing.baseFare ?? 500,
+          ratePerKm: s.mapPricing.ratePerKm ?? 200,
+          includedKm: s.mapPricing.includedKm ?? 2,
+          minimumFare: s.mapPricing.minimumFare ?? 800,
+        });
+        setVatPercent(s.vatPercent != null ? s.vatPercent : 0);
+        setAllIndepPct(s.allIndependentsCommissionPercent != null ? s.allIndependentsCommissionPercent : '');
+        setAllMerchPct(s.allMerchantsCommissionPercent != null ? s.allMerchantsCommissionPercent : '');
+        setRiderMarkerUrl(s.riderMarkerUrl || '');
+        setMessagingProvider(s.messagingProvider === 'zoho' ? 'zoho' : 'bird');
+        setEmailProvider(s.emailProvider === 'zoho' ? 'zoho' : 'bird');
       }
     } catch (err) {
       setMessage(err.response?.data?.message || 'Failed to load admin data');
@@ -284,6 +307,15 @@ const AdminDashboard = () => {
       setMessage(err.response?.data?.message || 'Failed to load rider');
     }
   };
+  const saveCommissionOverride = async (id, value) => {
+    try {
+      const res = await api.put(`/api/admin/users/${id}/commission-override`, {
+        commissionOverride: value === '' || value === null ? null : Number(value),
+      });
+      setMessage(res.data.message || 'Override saved');
+      openRiderDetail(id);
+    } catch (err) { setMessage(err.response?.data?.message || 'Failed'); }
+  };
   const saveTrustScore = async (id) => {
     try {
       const res = await api.put(`/api/admin/riders/${id}/trust-score`, { trustScore: Number(trustEdit) });
@@ -375,6 +407,15 @@ const AdminDashboard = () => {
         logoUrl,
         platformLogo: logoUrl,
         priceBands,
+        mapBookingEnabled,
+        etaCalibration: Number(etaCalibration),
+        mapPricing,
+        vatPercent: Number(vatPercent) || 0,
+        allIndependentsCommissionPercent: allIndepPct === '' ? null : Number(allIndepPct),
+        allMerchantsCommissionPercent: allMerchPct === '' ? null : Number(allMerchPct),
+        riderMarkerUrl,
+        messagingProvider,
+        emailProvider,
       });
       setMessage('Settings saved');
       await refreshBranding();
@@ -487,6 +528,19 @@ const AdminDashboard = () => {
                           <input type="number" min={0} max={100} value={trustEdit} onChange={(e) => setTrustEdit(e.target.value)} style={{ width: 80, padding: 6 }} />
                           <button type="button" className="btn btn-primary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => saveTrustScore(riderDetail._id)}>Save score</button>
                         </div>
+                        {!riderDetail.merchantId && (
+                          <div style={{ marginTop: 10 }}>
+                            <strong>Commission override %</strong> (independent only; blank = tier default)
+                            <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                              <input type="number" min={0} max={100} defaultValue={riderDetail.commissionOverride ?? ''} id="rider-c-override" style={{ width: 80, padding: 6 }} />
+                              <button type="button" className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => {
+                                const el = document.getElementById('rider-c-override');
+                                saveCommissionOverride(riderDetail._id, el?.value);
+                              }}>Save override</button>
+                              <button type="button" className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => saveCommissionOverride(riderDetail._id, null)}>Clear</button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                       <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                         <button type="button" className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: 11 }} onClick={() => deleteRiderData(riderDetail._id, ['bikePhotos'])}>Delete photos</button>
@@ -583,6 +637,17 @@ const AdminDashboard = () => {
                     ))}
                     <h4 style={{ fontSize: 14 }}>Live bikes / riders</h4>
                     <p style={{ fontSize: 13 }}>{(merchantDetail.bikes || []).length} bike(s) · {(merchantDetail.riders || []).length} rider(s)</p>
+                    <div style={{ marginTop: 12, padding: 10, background: 'var(--gray-50)', borderRadius: 8 }}>
+                      <strong style={{ fontSize: 13 }}>Commission override %</strong>
+                      <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+                        <input type="number" min={0} max={100} defaultValue={merchantDetail.merchant?.commissionOverride ?? ''} id="merchant-c-override" style={{ width: 80, padding: 6 }} />
+                        <button type="button" className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => {
+                          const el = document.getElementById('merchant-c-override');
+                          saveCommissionOverride(merchantDetail.merchant._id, el?.value);
+                        }}>Save</button>
+                        <button type="button" className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => saveCommissionOverride(merchantDetail.merchant._id, null)}>Clear</button>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
@@ -1005,6 +1070,69 @@ const AdminDashboard = () => {
                   <div className="form-group"><label>Account name</label><input value={bankForm.accountName} onChange={(e) => setBankForm({ ...bankForm, accountName: e.target.value })} required /></div>
                   <div className="form-group"><label>Account number</label><input value={bankForm.accountNumber} onChange={(e) => setBankForm({ ...bankForm, accountNumber: e.target.value })} required /></div>
                   <div className="form-group"><label>Commission %</label><input type="number" min={1} max={40} value={commissionPct} onChange={(e) => setCommissionPct(e.target.value)} /></div>
+                  <hr style={{ margin: '16px 0', border: 'none', borderTop: '1px solid var(--gray-200)' }} />
+                  <h3 style={{ fontSize: 15, marginBottom: 12 }}>Map booking (OSRM)</h3>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, marginBottom: 12 }}>
+                    <input type="checkbox" checked={mapBookingEnabled} onChange={(e) => setMapBookingEnabled(e.target.checked)} />
+                    Enable map booking (when OFF, all new jobs are text mode)
+                  </label>
+                  <div className="form-group"><label>ETA calibration (1.5–2.0)</label>
+                    <input type="number" min={1.5} max={2} step={0.05} value={etaCalibration} onChange={(e) => setEtaCalibration(e.target.value)} />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    <div className="form-group"><label>Base fare ₦</label><input type="number" value={mapPricing.baseFare} onChange={(e) => setMapPricing({ ...mapPricing, baseFare: Number(e.target.value) })} /></div>
+                    <div className="form-group"><label>Rate per km ₦</label><input type="number" value={mapPricing.ratePerKm} onChange={(e) => setMapPricing({ ...mapPricing, ratePerKm: Number(e.target.value) })} /></div>
+                    <div className="form-group"><label>Included km</label><input type="number" value={mapPricing.includedKm} onChange={(e) => setMapPricing({ ...mapPricing, includedKm: Number(e.target.value) })} /></div>
+                    <div className="form-group"><label>Minimum fare ₦</label><input type="number" value={mapPricing.minimumFare} onChange={(e) => setMapPricing({ ...mapPricing, minimumFare: Number(e.target.value) })} /></div>
+                  </div>
+                  <div className="form-group"><label>Rider live marker image URL (Cloudinary)</label>
+                    <input value={riderMarkerUrl} onChange={(e) => setRiderMarkerUrl(e.target.value)} placeholder="https://res.cloudinary.com/..." />
+                    <input type="file" accept="image/*" style={{ marginTop: 6 }} onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      try {
+                        const { uploadImage } = await import('../../services/upload');
+                        const url = await uploadImage(file, 'zumadash/markers');
+                        setRiderMarkerUrl(url);
+                        setMessage('Marker uploaded — Save settings to apply');
+                      } catch (err) {
+                        setMessage(err.response?.data?.message || 'Marker upload failed');
+                      }
+                    }} />
+                  </div>
+                  <hr style={{ margin: '16px 0', border: 'none', borderTop: '1px solid var(--gray-200)' }} />
+                  <h3 style={{ fontSize: 15, marginBottom: 12 }}>VAT & commission tiers</h3>
+                  <div className="form-group"><label>VAT % (0 = no VAT)</label>
+                    <input type="number" min={0} max={40} step={0.5} value={vatPercent} onChange={(e) => setVatPercent(e.target.value)} />
+                  </div>
+                  <div className="form-group"><label>All independent riders commission % (blank = use global)</label>
+                    <input type="number" min={0} max={40} value={allIndepPct} onChange={(e) => setAllIndepPct(e.target.value)} placeholder="e.g. 15" />
+                  </div>
+                  <div className="form-group"><label>All merchants / fleets commission % (blank = use global)</label>
+                    <input type="number" min={0} max={40} value={allMerchPct} onChange={(e) => setAllMerchPct(e.target.value)} placeholder="e.g. 12" />
+                  </div>
+                  <p style={{ fontSize: 12, color: 'var(--gray-500)', marginBottom: 12 }}>
+                    Global commission is above. Per-rider / per-merchant overrides: open rider or merchant detail.
+                  </p>
+                  <hr style={{ margin: '16px 0', border: 'none', borderTop: '1px solid var(--gray-200)' }} />
+                  <h3 style={{ fontSize: 15, marginBottom: 12 }}>Communication providers</h3>
+                  <div className="form-group">
+                    <label>WhatsApp provider</label>
+                    <select value={messagingProvider} onChange={(e) => setMessagingProvider(e.target.value)}>
+                      <option value="bird">Bird (default)</option>
+                      <option value="zoho">Zoho CPaaS</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label>Email provider</label>
+                    <select value={emailProvider} onChange={(e) => setEmailProvider(e.target.value)}>
+                      <option value="bird">Bird (default)</option>
+                      <option value="zoho">Zoho CPaaS / ZeptoMail</option>
+                    </select>
+                    <p style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 6 }}>
+                      Keys stay in server .env. WhatsApp: BIRD_* or ZOHO_CPAAS_* + templates. Email Zoho: ZOHO_SMTP_* (smtp.zeptomail.com) or ZOHO_CPAAS_API_KEY + ZOHO_FROM_EMAIL on a verified domain.
+                    </p>
+                  </div>
                   {priceBands && (
                     <>
                       <hr style={{ margin: '16px 0', border: 'none', borderTop: '1px solid var(--gray-200)' }} />

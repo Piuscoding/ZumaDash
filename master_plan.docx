@@ -695,3 +695,199 @@ LATER-5, LATER-6, LATER-7, LATER-10
 - Rider editing merchant control flags  
 - Merchant closing admin support tickets  
 - Building full AI before you have job history volume  
+
+
+
+
+
+
+//later feature been built NOW
+ ZumaDash – Map Mode + Live Tracking + Suggested Price (Paste-Ready Master Plan) 
+ Implement exactly as written. Do not invent alternate behaviour.
+
+  1. Purpose
+
+Add optional map mode for booking and tracking when both pickup and drop-off are pinned on the map.  
+If the user does not use the map (or only one side is pinned), the app stays on the existing text/landmark path and existing zone price bands.
+
+Live rider movement on the track page is required only for map-mode jobs.
+
+Bargaining, offers, bank-transfer gate, clearance, WhatsApp, and photo proofs remain unchanged.
+
+Service area only: Dutse · Kubwa · Bwari.
+
+
+  2. Two location modes (mandatory on every job)
+
+Every job must store:
+
+- `locationMode: "map"` or `locationMode: "text"`
+
+ Map mode is allowed only when:
+
+- Pickup has valid `lat` + `lng`, and
+- Drop-off has valid `lat` + `lng`, and
+- Both pins are inside the Dutse–Kubwa–Bwari service area
+
+ If only one coordinate exists, or either pin is missing, or either pin is outside the corridor:
+
+- Job must be `locationMode: "text"`
+- Map pricing, route map, and live tracking must not run
+- User uses textareas / landmarks / photos / voice as already built
+
+There is no half-map: one pin alone never enables map features.
+
+
+  3. Booking behaviour
+
+ UI
+
+- User may either:
+  - Use map: set both pickup and drop pins (search and/or drop pin), or
+  - Use text: fill pickup and drop textareas only (existing flow)
+
+ Rules
+
+1. If user starts map and sets only one pin → do not allow submit as map mode; require the second pin or clear pins and use text.  
+2. On submit with both valid in-corridor pins → `locationMode = "map"`, save both coordinates.  
+3. On submit without both pins → `locationMode = "text"`, coordinates empty/ignored for map features.  
+4. Optional media (photos, voice, video) work in both modes.
+
+ Suggested price at booking
+
+| Mode | How suggested price is calculated |
+|------|-----------------------------------|
+| `map` | Driving distance between the two pins → admin ₦/km formula (section 4) |
+| `text` | **Existing zone bands only (same / neighbouring / cross × package size). No km formula. |
+
+Suggested price pre-fills the price field. User may edit it.  
+Final price is still set by offers / counter-offers / accept (existing NOW marketplace).  
+Commission always uses agreed price, never suggested price alone.
+
+
+ 4. Map-mode price formula (admin-controlled)
+
+ Admin settings (platform settings)
+
+- `baseFare` (₦)  
+- `ratePerKm` (₦ per km)  
+- `includedKm` (km included in base; may be 0)  
+- `minimumFare` (₦)  
+- Size multipliers: `small`, `medium`, `large` (e.g. 1.0 / 1.15 / 1.35)
+
+ Distance
+
+- Use driving distance (Google Distance Matrix or Directions), not straight-line.  
+- Store on job as `mapDistanceKm`.
+
+ Formula (map mode only)
+
+\[
+\text{suggestedPrice} = \max\bigl(\text{minimumFare},\ \text{baseFare} + \text{ratePerKm} \times \max(0,\ \text{mapDistanceKm} - \text{includedKm}) \times \text{sizeFactor}\bigr)
+\]
+
+Text mode: do not call distance APIs; use existing zone band suggestion only.
+
+
+ 5. Tracking behaviour
+
+ 5.1 Text-mode jobs (`locationMode === "text"`)
+
+- Existing status timeline (LIVE → PICKED → DELIVERED, etc.)  
+- Photo / video lightbox and voice playback as already built  
+- WhatsApp status updates as already built  
+- No route map  
+- No live rider marker  
+
+  5.2 Map-mode jobs (`locationMode === "map"`)
+
+Track page must show:
+
+1. Map with:
+   - Pickup pin  
+   - Drop-off pin  
+   - Route between them (from directions when available)  
+2. Live rider movement while job is active:
+   - When rider status is LIVE or PICKED, rider app/client sends current `lat`/`lng` on a short interval (e.g. every 3–5 seconds) to the backend  
+   - Backend stores last known location for that job (optional short trail of recent points)  
+   - Backend broadcasts updates over Socket.io (already in stack) to the customer (and rider) on the track page  
+   - Customer track page updates the rider marker live without full page refresh  
+3. Status timeline and photo proofs remain visible on the same page (GPS can still fail mid-trip; do not remove WhatsApp/photo process)  
+4. Location streaming  stops when status becomes DELIVERED, cancelled, disputed, or completed  
+
+If the rider device has no GPS fix temporarily, keep last marker position and rely on status + photos; do not break the track page.
+
+
+ 6. Rider client duties (map-mode jobs only)
+
+1. After accepting a map-mode job, when rider taps LIVE (and while PICKED), start sharing geolocation to the server for that `jobId`.  
+2. Stop sharing on DELIVERED / cancel / complete.  
+3. Text-mode jobs: do not require or depend on location sharing for the product to work.
+
+
+  7. Corridor (service area)
+
+- Define a polygon/bounds for **Dutse · Kubwa · Bwari.  
+- Any pin outside → reject for map mode (user must repin inside or switch to text mode).  
+- Text-mode bookings remain limited by existing area rules/copy (still only this corridor as product policy).
+
+
+  8. What does not change
+
+- COD vs bank transfer payment gate  
+- Offers / counter-offers / agreed price  
+- Pending clearance / withdraw / commission  
+- Merchant flags  
+- WhatsApp + photo as safety net  
+- Zone bands remain the suggestion engine for text mode
+
+
+
+ 9. Job fields to persist (minimum)
+
+- `locationMode`: `"map"` | `"text"`  
+- `pickup`: `{ description, lat?, lng?, photos?, ... }`  
+- `dropoff`: `{ description, lat?, lng?, photos?, ... }`  
+- `mapDistanceKm` (only when map mode)  
+- `suggestedPrice`  
+- `agreedPrice` (from offers, as now)  
+- `riderLastLocation`: `{ lat, lng, updatedAt }` (map mode, while live)  
+- Optional: `routePolyline` or encoded path for drawing  
+
+
+ 10. Implementation order (in this phase, all included)
+
+1. Booking: both-pins-or-text rule + `locationMode`  
+2. Corridor validation on pins  
+3. Distance API + admin ₦/km settings + suggested price (map only; else zone bands)  
+4. Track page: static map + route for map-mode jobs  
+5. Live location: rider publish + Socket.io + moving marker on map-mode track page  
+
+Implement all five do not ship map pricing without the both-pins rule; do not enable live tracking on text-mode jobs.
+
+
+
+ 11. Acceptance tests (must pass)
+
+1. Text only booking → `locationMode = text` → suggested price from zone bands → track has no live map.  
+2. One pin only → cannot submit as map mode.  
+3. Two valid pins inside corridor → `locationMode = map` → `mapDistanceKm` set → suggested price from ₦/km formula.  
+4. Pin outside corridor → blocked for map mode.  
+5. Map-mode job, rider LIVE → customer track shows marker updating.  
+6. Same job, rider DELIVERED → location updates stop.  
+7. User still completes offers/bargain; agreed price overrides suggestion for commission.
+
+
+
+
+Implement this document exactly: ZumaDash Map Mode + Live Tracking + Suggested Price Master Plan.
+
+- Map mode ONLY when BOTH pickup and drop coordinates exist and are inside Dutse–Kubwa–Bwari.
+- Otherwise text mode: existing textareas + existing zone band pricing + existing timeline tracking (no live map).
+- Map mode suggested price = admin base + ₦/km × driving distance (and minimum/size factors). Text mode = zone bands only.
+- Map-mode track page = map + route + LIVE rider movement via Socket.io; keep status/photo/WhatsApp as well.
+- Do not remove bargaining, payment gates, or clearance flows.
+- Extend the existing codebase; match existing auth, job, and notify patterns.
+
+
+

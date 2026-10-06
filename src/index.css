@@ -97,3 +97,19 @@
     --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
   }
 }
+
+
+/* Leaflet below sticky navbar / mobile menu (navbar z-[200]) */
+.leaflet-pane,
+.leaflet-top,
+.leaflet-bottom,
+.leaflet-control {
+  z-index: 10 !important;
+}
+.leaflet-container {
+  z-index: 1 !important;
+  font: inherit;
+}
+.leaflet-proxy {
+  z-index: 1 !important;
+}

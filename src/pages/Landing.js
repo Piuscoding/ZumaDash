@@ -123,7 +123,7 @@ const Landing = () => {
           <div className="why-grid">
             <div className="features">
               {[
-                { icon: '📍', t: 'Hyper-local', d: 'Dutse, Kubwa and Bwari only — riders who know every landmark.' },
+                { icon: '📍', t: 'Hyper-local', d: 'Dutse, Kubwa, Bwari and Ushafa only — riders who know every landmark.' },
                 { icon: '💬', t: 'WhatsApp tracking', d: 'Photo proof and status updates where maps fail.' },
                 { icon: '🤝', t: 'Fair bargaining', d: 'Suggested bands plus room to agree a final price.' },
                 { icon: '🛡️', t: 'Verified riders', d: 'Admin-approved partners with documents and trust scores.' },
@@ -236,7 +236,7 @@ const Landing = () => {
                 <span>{platformName}</span>
               </div>
               <p>
-                Hyper-local delivery for Dutse, Kubwa and Bwari. Named after the rock that marks the road home.
+                Hyper-local delivery for Dutse, Kubwa, Bwari and Ushafa. Named after the rock that marks the road home.
               </p>
             </div>
             <div className="footer-col">
@@ -266,7 +266,7 @@ const Landing = () => {
           </div>
           <div className="footer-bottom">
             <span>© {new Date().getFullYear()} {platformName}. Built for Northern Abuja.</span>
-            <span>Dutse · Kubwa · Bwari</span>
+            <span>Dutse · Kubwa · Bwari · Ushafa</span>
           </div>
         </div>
       </footer>

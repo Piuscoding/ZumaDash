@@ -3,6 +3,8 @@ import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import RoleNavbar from '../../components/RoleNavbar';
 import api from '../../services/api';
+import DeliveryMap from '../../components/map/DeliveryMap';
+import { joinJobRoom, leaveJobRoom } from '../../services/socket';
 import { uploadImage } from '../../services/upload';
 
 const statusSteps = [
@@ -25,7 +27,11 @@ const TrackDelivery = () => {
   const [message, setMessage] = useState('');
   const [proofFile, setProofFile] = useState(null);
   const [proofPreview, setProofPreview] = useState(null);
-  const [lightbox, setLightbox] = useState(null); // { type: 'image'|'video', url }
+  const [lightbox, setLightbox] = useState(null);
+  const [liveLoc, setLiveLoc] = useState(null);
+  const [liveMeta, setLiveMeta] = useState(null); // remaining km/eta from stream
+  const [mapFullscreen, setMapFullscreen] = useState(false);
+  const [mapMeta, setMapMeta] = useState({ tileUrl: '', riderMarkerUrl: '' }); // { type: 'image'|'video', url }
   const [counterDraft, setCounterDraft] = useState({}); // offerId -> amount
   const [riderReoffer, setRiderReoffer] = useState({}); // offerId -> amount
 
@@ -44,6 +50,88 @@ const TrackDelivery = () => {
     fetchJob();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  useEffect(() => {
+    api.get('/api/map/config')
+      .then((res) => {
+        setMapMeta({
+          tileUrl: res.data.mapTileUrl || '',
+          riderMarkerUrl: res.data.riderMarkerUrl || '',
+        });
+      })
+      .catch(() => {});
+  }, []);
+
+  // Subscribe to live rider position (customer, rider, admin, merchant)
+  useEffect(() => {
+    if (!job) return undefined;
+    const hasCoords = job.pickup?.coordinates?.lat && job.dropoff?.coordinates?.lat;
+    if (job.locationMode !== 'map' && !hasCoords) return undefined;
+    // Stream while on the way; stop after delivered / clearance / done / cancelled
+    if (!['accepted', 'live', 'picked'].includes(job.status)) {
+      return undefined;
+    }
+    const jobId = job.jobId;
+    if (job.riderLastLocation?.lat != null) {
+      setLiveLoc({
+        lat: job.riderLastLocation.lat,
+        lng: job.riderLastLocation.lng,
+        updatedAt: job.riderLastLocation.updatedAt,
+      });
+    }
+    const s = joinJobRoom(jobId);
+    const onLoc = (payload) => {
+      if (payload?.jobId && payload.jobId !== jobId) return;
+      if (payload?.lat == null) return;
+      setLiveLoc({ lat: payload.lat, lng: payload.lng, updatedAt: payload.updatedAt });
+      setLiveMeta({
+        remainingKm: payload.remainingKm ?? payload.remainingKmApprox,
+        displayRemainingSec: payload.displayRemainingSec,
+        remainingSec: payload.remainingSec,
+        leg: payload.leg,
+      });
+    };
+    s.on('rider_location', onLoc);
+    return () => {
+      s.off('rider_location', onLoc);
+      leaveJobRoom(jobId);
+    };
+  }, [job?.jobId, job?.locationMode, job?.status, job?.pickup?.coordinates?.lat]);
+
+  // Rider device: push GPS every 4s until delivered
+  useEffect(() => {
+    if (!job || !user) return undefined;
+    const riderId = job.rider?._id || job.rider;
+    const iAmRider = user.role === 'rider' && String(riderId) === String(user.id || user._id);
+    if (!iAmRider) return undefined;
+    const hasCoords = job.pickup?.coordinates?.lat && job.dropoff?.coordinates?.lat;
+    if (job.locationMode !== 'map' && !hasCoords) return undefined;
+    if (!['accepted', 'live', 'picked'].includes(job.status)) return undefined;
+    if (!navigator.geolocation) {
+      console.warn('Geolocation not available');
+      return undefined;
+    }
+    const push = () => {
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          try {
+            await api.post(`/api/jobs/${job._id}/location`, {
+              lat: pos.coords.latitude,
+              lng: pos.coords.longitude,
+            });
+          } catch (e) {
+            console.warn('location push failed', e?.response?.data || e.message);
+          }
+        },
+        (err) => console.warn('geolocation error', err.message),
+        { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 }
+      );
+    };
+    push();
+    const id = setInterval(push, 4000);
+    return () => clearInterval(id);
+  }, [job?._id, job?.status, job?.locationMode, job?.rider, user]);
+
 
   const onProofSelect = (e) => {
     const file = e.target.files?.[0];
@@ -193,7 +281,7 @@ const TrackDelivery = () => {
     <div style={{ minHeight: '100vh', background: 'var(--gray-50)' }}>
       <RoleNavbar />
       <div className="container" style={{ padding: '24px 16px', maxWidth: 640 }}>
-        <Link to={isRider ? '/rider' : isAdmin ? '/admin' : '/my-deliveries'} style={{ color: 'var(--primary)', fontWeight: 600, fontSize: 14 }}>
+        <Link to={isRider ? '/rider' : isAdmin ? '/admin' : user?.role === 'merchant' ? '/merchant' : '/my-deliveries'} style={{ color: 'var(--primary)', fontWeight: 600, fontSize: 14 }}>
           ← Back
         </Link>
 
@@ -208,6 +296,50 @@ const TrackDelivery = () => {
             <h1 style={{ fontSize: 18, margin: 0 }}>{job.jobId}</h1>
             <span className="badge badge-info">{String(job.status).replace(/_/g, ' ')}</span>
           </div>
+
+          {/* PART 1 – Map track (map mode only) */}
+          {((job.locationMode === 'map') || (job.pickup?.coordinates?.lat && job.dropoff?.coordinates?.lat)) && (
+            <div style={{ marginTop: 16, position: 'relative' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <span style={{ fontSize: 13, fontWeight: 600 }}>
+                  Live map
+                  {job.mapDistanceKm != null ? ` · route ${job.mapDistanceKm} km` : ''}
+                  {liveMeta?.remainingKm != null
+                    ? ` · remaining ~${liveMeta.remainingKm} km`
+                    : job.displayDurationSec != null
+                      ? ` · ~${Math.round(job.displayDurationSec / 60)} min`
+                      : ''}
+                  {liveMeta?.displayRemainingSec != null
+                    ? ` · ~${Math.max(1, Math.round(liveMeta.displayRemainingSec / 60))} min left`
+                    : ''}
+                  {liveMeta?.leg === 'to_pickup' ? ' (to pickup)' : liveMeta?.leg === 'to_dropoff' ? ' (to drop-off)' : ''}
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ padding: '4px 10px', fontSize: 12 }}
+                  onClick={() => setMapFullscreen(true)}
+                >
+                  Fullscreen
+                </button>
+              </div>
+              <DeliveryMap
+                pickup={job.pickup?.coordinates}
+                dropoff={job.dropoff?.coordinates}
+                routeGeometry={job.routeGeometry}
+                riderLocation={liveLoc || job.riderLastLocation}
+                riderMarkerUrl={mapMeta.riderMarkerUrl}
+                tileUrl={mapMeta.tileUrl}
+                height={260}
+              />
+            </div>
+          )}
+          {job.locationMode !== 'map' && !(job.pickup?.coordinates?.lat && job.dropoff?.coordinates?.lat) && (
+            <p style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 12 }}>
+              Map not available for this delivery (text / landmark mode). Tracking uses status, photos and WhatsApp.
+            </p>
+          )}
+
 
           {/* Status progress — labeled circles with check marks */}
           <div style={{ marginTop: 20, overflowX: 'auto', paddingBottom: 4 }}>
@@ -491,6 +623,29 @@ const TrackDelivery = () => {
       </div>
 
       {/* NOW-18 lightbox */}
+      
+      {mapFullscreen && job?.locationMode === 'map' && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 10000, background: '#000' }}>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            style={{ position: 'absolute', top: 12, right: 12, zIndex: 10001 }}
+            onClick={() => setMapFullscreen(false)}
+          >
+            Close map
+          </button>
+          <DeliveryMap
+            pickup={job.pickup?.coordinates}
+            dropoff={job.dropoff?.coordinates}
+            routeGeometry={job.routeGeometry}
+            riderLocation={liveLoc || job.riderLastLocation}
+            riderMarkerUrl={mapMeta.riderMarkerUrl}
+            tileUrl={mapMeta.tileUrl}
+            height="100vh"
+          />
+        </div>
+      )}
+
       {lightbox && (
         <div
           role="dialog"
