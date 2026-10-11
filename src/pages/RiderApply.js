@@ -35,6 +35,8 @@ const RiderApply = () => {
   const [photoUrls, setPhotoUrls] = useState([]);
   const [documentUrls, setDocumentUrls] = useState([]);
   const [videoUrl, setVideoUrl] = useState('');
+  const [ninPhotoUrl, setNinPhotoUrl] = useState('');
+  const [applicationSelfieUrl, setApplicationSelfieUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState('');
@@ -42,6 +44,36 @@ const RiderApply = () => {
   const [collapsedBikes, setCollapsedBikes] = useState({}); // index -> true
 
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
+
+  const onNinPhoto = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setError('');
+    try {
+      const url = await uploadFile(file, 'zumadash/onboarding/nin');
+      setNinPhotoUrl(url);
+    } catch (err) {
+      setError(err.response?.data?.message || 'NIN photo upload failed');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const onSelfie = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setError('');
+    try {
+      const url = await uploadFile(file, 'zumadash/onboarding/selfie');
+      setApplicationSelfieUrl(url);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Selfie upload failed');
+    } finally {
+      setUploading(false);
+    }
+  };
 
   // When number of bikes changes, grow/shrink fleetBikes list
   useEffect(() => {
@@ -197,6 +229,11 @@ const RiderApply = () => {
     setError('');
     setMessage('');
     try {
+      if (!ninPhotoUrl || !applicationSelfieUrl) {
+        setError('Photo of NIN document and selfie are required');
+        setLoading(false);
+        return;
+      }
       if (form.riderType === 'fleet') {
         const n = Math.min(20, Math.max(1, parseInt(form.numberOfBikes, 10) || 1));
         if (fleetBikes.length < n) {
@@ -225,6 +262,8 @@ const RiderApply = () => {
         await api.post('/api/users/rider-application', {
           riderType: 'fleet',
           nin: form.nin,
+          ninPhotoUrl,
+          applicationSelfieUrl,
           bikeDetails: bikes,
           fleetApplication: { numberOfBikes: n, bikes },
           guarantor: {
@@ -237,6 +276,8 @@ const RiderApply = () => {
         await api.post('/api/users/rider-application', {
           riderType: 'individual',
           nin: form.nin,
+          ninPhotoUrl,
+          applicationSelfieUrl,
           bikeDetails: [
             {
               plateNumber: form.plateNumber,
@@ -309,6 +350,20 @@ const RiderApply = () => {
             <div className="form-group">
               <label>NIN</label>
               <input name="nin" value={form.nin} onChange={handleChange} required placeholder="National Identification Number" />
+            </div>
+            <div className="form-group">
+              <label>Photo of NIN document</label>
+              <input type="file" accept="image/*" disabled={!isAuthenticated || uploading} onChange={onNinPhoto} required={!ninPhotoUrl} />
+              {ninPhotoUrl && (
+                <img src={ninPhotoUrl} alt="NIN" style={{ width: 96, height: 96, objectFit: 'cover', borderRadius: 8, marginTop: 8 }} />
+              )}
+            </div>
+            <div className="form-group">
+              <label>Selfie of person submitting</label>
+              <input type="file" accept="image/*" capture="user" disabled={!isAuthenticated || uploading} onChange={onSelfie} required={!applicationSelfieUrl} />
+              {applicationSelfieUrl && (
+                <img src={applicationSelfieUrl} alt="Selfie" style={{ width: 96, height: 96, objectFit: 'cover', borderRadius: 8, marginTop: 8 }} />
+              )}
             </div>
 
             {form.riderType === 'fleet' && (

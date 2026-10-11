@@ -6,6 +6,9 @@ import { useAuth } from './context/AuthContext';
 import Landing from './pages/Landing';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import VerifyWhatsApp from './pages/VerifyWhatsApp';
+import LanguageSwitcher from './components/LanguageSwitcher';
+import DeviceOtp from './pages/DeviceOtp';
 import RiderApply from './pages/RiderApply';
 import RiderPublic from './pages/RiderPublic';
 import HowItWorks from './pages/HowItWorks';
@@ -36,14 +39,20 @@ import MerchantDashboard from './pages/merchant/Dashboard';
 import Notifications from './pages/Notifications';
 import Support from './pages/Support';
 import Profile from './pages/Profile';
+import Settings from './pages/Settings';
 
 const PrivateRoute = ({ children, roles }) => {
   const { user, loading, isAuthenticated } = useAuth();
   if (loading) return <div style={{ padding: 40, textAlign: 'center' }}>Loading...</div>;
   if (!isAuthenticated) return <Navigate to="/login" />;
+  const channelVerified =
+    user?.whatsappVerified === true || user?.emailVerified === true;
+  if (user?.role !== 'admin' && user?.role !== 'manager' && !channelVerified) {
+    return <Navigate to="/verify-whatsapp" replace />;
+  }
   if (roles && !roles.includes(user.role)) {
     if (user.role === 'rider') return <Navigate to="/rider" />;
-    if (user.role === 'admin') return <Navigate to="/admin" />;
+    if (user.role === 'admin' || user.role === 'manager') return <Navigate to="/admin" />;
     if (user.role === 'merchant') return <Navigate to="/merchant" />;
     return <Navigate to="/dashboard" />;
   }
@@ -53,11 +62,14 @@ const PrivateRoute = ({ children, roles }) => {
 function App() {
   return (
     <Router>
+      <LanguageSwitcher floating />
       <Routes>
         {/* Public */}
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/verify-whatsapp" element={<VerifyWhatsApp />} />
+        <Route path="/device-otp" element={<DeviceOtp />} />
         <Route path="/become-a-rider" element={<RiderApply />} />
         <Route path="/riders/:id" element={<PrivateRoute><RiderPublic /></PrivateRoute>} />
         <Route path="/how-it-works" element={<HowItWorks />} />
@@ -81,7 +93,7 @@ function App() {
         <Route path="/rider/history" element={<PrivateRoute roles={['rider']}><JobHistory /></PrivateRoute>} />
 
         {/* Admin */}
-        <Route path="/admin" element={<PrivateRoute roles={['admin']}><AdminDashboard /></PrivateRoute>} />
+        <Route path="/admin" element={<PrivateRoute roles={['admin', 'manager']}><AdminDashboard /></PrivateRoute>} />
 
         {/* Merchant */}
         <Route path="/merchant" element={<PrivateRoute roles={['merchant']}><MerchantDashboard /></PrivateRoute>} />
@@ -89,6 +101,7 @@ function App() {
         {/* Shared authenticated */}
         <Route path="/notifications" element={<PrivateRoute><Notifications /></PrivateRoute>} />
         <Route path="/support" element={<PrivateRoute><Support /></PrivateRoute>} />
+        <Route path="/settings" element={<PrivateRoute><Settings /></PrivateRoute>} />
         <Route path="/profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
 
         <Route path="*" element={<Navigate to="/" />} />

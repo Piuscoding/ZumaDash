@@ -35,7 +35,7 @@ const TermsMerchants = () => {
             </h1>
             <p style={{ color: 'var(--gray-500)', fontSize: 14, margin: 0 }}>
               For businesses and owners who register multiple bikes and manage fleet riders on {platformName}.
-              Service area: Dutse · Kubwa · Bwari only.
+              Service area: Dutse · Kubwa · Bwari · Ushafa.
             </p>
           </div>
         </div>
@@ -79,7 +79,7 @@ const TermsMerchants = () => {
             same time.
           </li>
           <li>
-            You must only list bikes you own or are authorised to operate commercially in Dutse, Kubwa and Bwari.
+            You must only list bikes you own or are authorised to operate commercially in Dutse, Kubwa, Bwari and Ushafa.
           </li>
         </ul>
 
@@ -105,7 +105,7 @@ const TermsMerchants = () => {
         <h2 style={{ fontSize: 17, margin: '24px 0 8px' }}>5. Jobs, service area & conduct</h2>
         <ul style={{ paddingLeft: 20, lineHeight: 1.8, fontSize: 14, color: 'var(--gray-700)' }}>
           <li>
-            All {platformName} deliveries are limited to <strong>Dutse, Kubwa and Bwari</strong>. Do not instruct riders
+            All {platformName} deliveries are limited to <strong>Dutse, Kubwa, Bwari and Ushafa</strong>. Do not instruct riders
             to take platform jobs outside this corridor.
           </li>
           <li>

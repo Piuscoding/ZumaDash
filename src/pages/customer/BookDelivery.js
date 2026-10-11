@@ -4,11 +4,13 @@ import CustomerNavbar from '../../components/CustomerNavbar';
 import api from '../../services/api';
 import MapPicker from '../../components/map/MapPicker';
 import { useAuth } from '../../context/AuthContext';
+import { useI18n } from '../../context/I18nContext';
 import { savePendingBooking, getPendingBooking } from '../../utils/pendingBooking';
 import { uploadImage, uploadFile, fileToDataUrl } from '../../services/upload';
 // saved addresses loaded when authenticated
 
 const BookDelivery = () => {
+  const { t } = useI18n();
   const { user, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
@@ -22,8 +24,6 @@ const BookDelivery = () => {
   });
   const [paymentConfirmed, setPaymentConfirmed] = useState(false);
   const [mapConfig, setMapConfig] = useState({ mapBookingEnabled: false, mapTileUrl: '' });
-  const [vatPercent, setVatPercent] = useState(0);
-  const [commissionPct, setCommissionPct] = useState(15);
   const [pickupPin, setPickupPin] = useState(null);
   const [dropPin, setDropPin] = useState(null);
   const [mapQuote, setMapQuote] = useState(null);
@@ -42,7 +42,7 @@ const BookDelivery = () => {
     dropoffDescription: '',
     packageSize: 'small',
     packageDescription: '',
-    paymentMethod: 'cash',
+    paymentMethod: 'bank_transfer',
     suggestedPrice: 1500,
     pickupPhotos: [],
     dropoffPhotos: [],
@@ -65,8 +65,6 @@ const BookDelivery = () => {
         if (res.data.settings?.mapBookingEnabled) {
           setMapConfig((c) => ({ ...c, mapBookingEnabled: true, mapTileUrl: res.data.settings.mapTileUrl || c.mapTileUrl }));
         }
-        if (res.data.settings?.vatPercent != null) setVatPercent(Number(res.data.settings.vatPercent) || 0);
-        if (res.data.settings?.commissionPercentage != null) setCommissionPct(Number(res.data.settings.commissionPercentage) || 15);
       })
       .catch(() => {});
     api.get('/api/map/config')
@@ -260,7 +258,7 @@ const BookDelivery = () => {
     dropoffDescription: form.dropoffDescription,
     packageSize: form.packageSize,
     packageDescription: form.packageDescription,
-    paymentMethod: form.paymentMethod,
+    paymentMethod: (form.paymentMethod === 'cash' && user?.kycStatus !== 'approved') ? 'bank_transfer' : form.paymentMethod,
     suggestedPrice: Number(form.suggestedPrice),
         locationMode: bookingMode === 'map' && mapQuote?.locationMode === 'map' ? 'map' : 'text',
         mapDistanceKm: bookingMode === 'map' && mapQuote?.locationMode === 'map' ? mapQuote.mapDistanceKm : undefined,
@@ -406,7 +404,7 @@ const BookDelivery = () => {
         <div className="card">
           <h1 style={{ fontSize: 22, marginBottom: 8 }}>Book a Delivery</h1>
           <p style={{ color: 'var(--gray-500)', fontSize: 14, marginBottom: 8 }}>
-            Dutse • Kubwa • Bwari only
+            {t('book.corridorOnly')}
           </p>
 
           <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
@@ -645,7 +643,7 @@ const BookDelivery = () => {
                   onChange={handleChange}
                   onFocus={() => setActiveField('dropoff')}
                   rows={3}
-                  placeholder="e.g. Dutse Alhaji, near the market, red roof house"
+                  placeholder="e.g. Dutse Alhaji, Ushafa village, near the market, red roof house"
                   required
                 />
                 {bookingMode === 'map' && mapConfig.mapBookingEnabled && (
@@ -717,19 +715,27 @@ const BookDelivery = () => {
               <div className="form-group">
                 <label>Suggested Price (₦)</label>
                 <input type="number" name="suggestedPrice" value={form.suggestedPrice} onChange={handleChange} min={500} />
-                {vatPercent > 0 && (
-                  <p style={{ fontSize: 12, color: 'var(--gray-600)', marginTop: 6 }}>
-                    VAT {vatPercent}% ≈ ₦{Math.round((Number(form.suggestedPrice) * vatPercent) / 100).toLocaleString()} and commission ~{commissionPct}% are taken from this delivery amount for the platform (rider keeps the rest). Customer pays this full amount (COD or transfer).
-                  </p>
-                )}
                 <small style={{ color: 'var(--gray-500)', fontSize: 12 }}>Riders can make offers.</small>
               </div>
               <div className="form-group">
                 <label>Payment Method</label>
-                <select name="paymentMethod" value={form.paymentMethod} onChange={handleChange}>
-                  <option value="cash">Cash on Delivery</option>
+                <select
+                  name="paymentMethod"
+                  value={form.paymentMethod === 'cash' && user?.kycStatus !== 'approved' ? 'bank_transfer' : form.paymentMethod}
+                  onChange={(e) => {
+                    if (e.target.value === 'cash' && user?.kycStatus !== 'approved') return;
+                    handleChange(e);
+                  }}
+                >
+                  {user?.kycStatus === 'approved' && <option value="cash">Cash on Delivery</option>}
                   <option value="bank_transfer">Bank Transfer</option>
                 </select>
+                {user?.kycStatus !== 'approved' && (
+                  <p style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 6 }}>
+                    Cash on Delivery needs approved KYC.{' '}
+                    <a href="/settings" style={{ color: 'var(--primary)', fontWeight: 600 }}>Complete KYC in Settings</a>.
+                  </p>
+                )}
               </div>
               <div style={{ display: 'flex', gap: 12 }}>
                 <button className="btn btn-secondary" onClick={() => setStep(1)} style={{ flex: 1 }}>← Back</button>
@@ -750,15 +756,7 @@ const BookDelivery = () => {
                 <h3 style={{ fontSize: 16, marginBottom: 12, color: 'var(--primary-dark)' }}>Bank Transfer Details</h3>
                 <p style={{ fontSize: 13, color: 'var(--gray-700)', marginBottom: 16 }}>
                   Transfer <strong>₦{Number(form.suggestedPrice).toLocaleString()}</strong> to the account below.
-                  {vatPercent > 0 && (
-                    <div style={{ marginTop: 10, fontSize: 13, background: 'var(--gray-50)', padding: 10, borderRadius: 8 }}>
-                      <div>Delivery: ₦{Number(form.suggestedPrice).toLocaleString()}</div>
-                      <div>VAT ({vatPercent}%): ₦{Math.round((Number(form.suggestedPrice) * vatPercent) / 100).toLocaleString()}</div>
-                      <div>Platform commission (~{commissionPct}%): ₦{Math.round((Number(form.suggestedPrice) * commissionPct) / 100).toLocaleString()}</div>
-                      <div style={{ fontWeight: 700, marginTop: 4 }}>Amount to transfer: ₦{Number(form.suggestedPrice).toLocaleString()}</div>
-                      <div style={{ fontSize: 11, color: 'var(--gray-500)', marginTop: 4 }}>VAT and commission are platform take from the delivery amount (rider share is reduced). You still transfer the full delivery price.</div>
-                    </div>
-                  )}
+                  
                 </p>
                 <div style={{ background: 'white', borderRadius: 10, padding: 16 }}>
                   <div style={{ marginBottom: 12 }}>

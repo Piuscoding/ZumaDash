@@ -5,18 +5,26 @@ import api from '../../services/api';
 import { uploadImage } from '../../services/upload';
 import AdminNavbar from '../../components/AdminNavbar';
 import { useBranding } from '../../context/BrandingContext';
+import KycReview from './KycReview';
+import SecurityDesk from './SecurityDesk';
+import ManagersDesk from './ManagersDesk';
+import { BarChart, HorizontalBars, ChangeBadge } from '../../components/admin/KpiCharts';
+import JobMediaGallery from '../../components/JobMediaGallery';
 
-const TABS = ['overview', 'payment', 'riders', 'merchants', 'customers', 'jobs', 'disputes', 'finance', 'notify', 'email', 'reports', 'settings'];
+const TABS = ['overview', 'payment', 'riders', 'merchants', 'customers', 'kyc', 'security', 'managers', 'jobs', 'disputes', 'finance', 'notify', 'email', 'reports', 'settings'];
 
 const AdminDashboard = () => {
   const { user, logout } = useAuth();
+  const isManager = user?.role === 'manager';
+  const isAdmin = user?.role === 'admin';
+  const [staffPerms, setStaffPerms] = useState(null);
   const { refreshBranding } = useBranding();
   const [stats, setStats] = useState(null);
   const [riders, setRiders] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [jobs, setJobs] = useState([]);
   const [disputes, setDisputes] = useState([]);
-  const [finance, setFinance] = useState({ riders: [], totals: {} });
+  const [finance, setFinance] = useState({ riders: [], totals: {}, series: [], compare: null, withdrawHistory: [], period: null });
   const [templates, setTemplates] = useState([]);
   const [report, setReport] = useState(null);
   const [tab, setTab] = useState('overview');
@@ -37,6 +45,11 @@ const AdminDashboard = () => {
   const [riderMarkerUrl, setRiderMarkerUrl] = useState('');
   const [messagingProvider, setMessagingProvider] = useState('bird');
   const [emailProvider, setEmailProvider] = useState('bird');
+  const [requireWhatsappForLogin, setRequireWhatsappForLogin] = useState(true);
+  const [maxSessions, setMaxSessions] = useState(2);
+  const [maxLoginAttempts, setMaxLoginAttempts] = useState(5);
+  const [lockoutMinutes, setLockoutMinutes] = useState(10);
+  const [fraudAutoFreezeScore, setFraudAutoFreezeScore] = useState(25);
   const [notifyForm, setNotifyForm] = useState({ audience: 'all_customers', title: '', message: '' });
   const [emailForm, setEmailForm] = useState({ audience: 'all_customers', subject: '', html: '', templateId: '' });
   const [tplForm, setTplForm] = useState({ name: '', subject: '', body: '', signature: '', category: 'general' });
@@ -44,6 +57,10 @@ const AdminDashboard = () => {
   const [emailSending, setEmailSending] = useState(false);
   const [payAmount, setPayAmount] = useState({});
   const [reportDays, setReportDays] = useState(30);
+  const [reportSegment, setReportSegment] = useState('all');
+  const [financeDays, setFinanceDays] = useState(30);
+  const [exportFrom, setExportFrom] = useState('');
+  const [exportTo, setExportTo] = useState('');
   const [pendingTransfers, setPendingTransfers] = useState([]);
   const [pendingClearances, setPendingClearances] = useState([]);
   const [pendingWithdraws, setPendingWithdraws] = useState([]);
@@ -66,7 +83,7 @@ const AdminDashboard = () => {
           api.get('/api/settings'),
           api.get('/api/admin/customers'),
           api.get('/api/admin/disputes'),
-          api.get('/api/admin/finance'),
+          api.get(`/api/admin/finance?days=${financeDays || 30}`),
           api.get('/api/admin/email-templates').catch(() => ({ data: { templates: [] } })),
         ]);
       setStats(statsRes.data.stats);
@@ -74,7 +91,15 @@ const AdminDashboard = () => {
       setJobs(jobsRes.data.jobs || []);
       setCustomers(customersRes.data.customers || []);
       setDisputes(disputesRes.data.jobs || []);
-      setFinance({ riders: financeRes.data.riders || [], totals: financeRes.data.totals || {} });
+      setFinance({
+        riders: financeRes.data.riders || [],
+        totals: financeRes.data.totals || {},
+        series: financeRes.data.series || [],
+        compare: financeRes.data.compare || null,
+        withdrawHistory: financeRes.data.withdrawHistory || [],
+        period: financeRes.data.period || null,
+        periodDays: financeRes.data.periodDays,
+      });
       setTemplates(tplRes.data.templates || []);
       try {
         const mres = await api.get('/api/admin/merchants');
@@ -133,6 +158,11 @@ const AdminDashboard = () => {
         setRiderMarkerUrl(s.riderMarkerUrl || '');
         setMessagingProvider(s.messagingProvider === 'zoho' ? 'zoho' : 'bird');
         setEmailProvider(s.emailProvider === 'zoho' ? 'zoho' : 'bird');
+        setRequireWhatsappForLogin(s.requireWhatsappForLogin !== false);
+        setMaxSessions(s.maxSessions ?? 2);
+        setMaxLoginAttempts(s.maxLoginAttempts ?? 5);
+        setLockoutMinutes(s.lockoutMinutes ?? 10);
+        setFraudAutoFreezeScore(s.fraudAutoFreezeScore ?? 25);
       }
     } catch (err) {
       setMessage(err.response?.data?.message || 'Failed to load admin data');
@@ -141,9 +171,47 @@ const AdminDashboard = () => {
     }
   };
 
-  const loadReport = async (days = reportDays) => {
+
+  const downloadAdminCsv = async () => {
     try {
-      const res = await api.get(`/api/admin/reports?days=${days}`);
+      const params = new URLSearchParams();
+      if (exportFrom) params.set('from', exportFrom);
+      if (exportTo) params.set('to', exportTo);
+      const res = await api.get(`/api/admin/reports/export-csv?${params.toString()}`, {
+        responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'text/csv' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `zumadash-admin-export.csv`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+      setMessage('CSV export downloaded');
+    } catch (e) {
+      setMessage(e.response?.data?.message || 'Export failed');
+    }
+  };
+
+  const loadFinance = async (days = financeDays) => {
+    try {
+      const res = await api.get(`/api/admin/finance?days=${days}`);
+      setFinance({
+        riders: res.data.riders || [],
+        totals: res.data.totals || {},
+        series: res.data.series || [],
+        compare: res.data.compare || null,
+        withdrawHistory: res.data.withdrawHistory || [],
+        period: res.data.period || null,
+        periodDays: res.data.periodDays || days,
+      });
+    } catch (err) {
+      setMessage(err.response?.data?.message || 'Finance load failed');
+    }
+  };
+
+  const loadReport = async (days = reportDays, segment = reportSegment) => {
+    try {
+      const res = await api.get(`/api/admin/reports?days=${days}&segment=${segment}`);
       setReport(res.data);
     } catch (err) {
       setMessage(err.response?.data?.message || 'Report failed');
@@ -151,7 +219,30 @@ const AdminDashboard = () => {
   };
 
   useEffect(() => { fetchData(); }, []);
-  useEffect(() => { if (tab === 'reports') loadReport(); }, [tab]);
+  useEffect(() => { if (tab === 'reports') loadReport(reportDays, reportSegment); }, [tab, reportDays, reportSegment]);
+  useEffect(() => { if (tab === 'finance') loadFinance(financeDays); }, [tab, financeDays]);
+
+  useEffect(() => {
+    api.get('/api/admin/me/permissions')
+      .then((res) => setStaffPerms(res.data.permissions || null))
+      .catch(() => setStaffPerms(null));
+  }, []);
+
+  const can = (key) => {
+    if (isAdmin) return true;
+    if (!isManager) return false;
+    if (key === 'settings' || key === 'documentDelete' || key === 'documentDownload') return false;
+    if (staffPerms && staffPerms[key] === false) return false;
+    return true;
+  };
+  const canDownloadDocs = isAdmin; // Step 12 – managers cannot download identity docs
+  const canDeleteDocs = isAdmin;
+
+  const visibleTabs = TABS.filter((t) => {
+    if (t === 'settings' || t === 'managers') return isAdmin;
+    if (t === 'settings') return can('settings');
+    return can(t);
+  });
 
   const verifyRider = async (id, action) => {
     try {
@@ -211,9 +302,21 @@ const AdminDashboard = () => {
   };
   const disputeAction = async (id, action) => {
     const note = window.prompt('Note (optional):') || '';
+    let amount;
+    if (action === 'resolve_partial') {
+      const raw = window.prompt('Partial amount to pay rider (₦):');
+      amount = Number(raw);
+      if (!amount || amount <= 0) {
+        setMessage('Partial resolve needs a positive amount');
+        return;
+      }
+    }
+    if (action === 'resolve_requeue') {
+      if (!window.confirm('Requeue this job for new offers? Current rider will be unassigned.')) return;
+    }
     try {
-      await api.put(`/api/admin/jobs/${id}/dispute`, { action, note });
-      setMessage('Dispute updated');
+      const res = await api.put(`/api/admin/jobs/${id}/dispute`, { action, note, amount });
+      setMessage(res.data.message || 'Dispute updated');
       fetchData();
     } catch (err) { setMessage(err.response?.data?.message || 'Failed'); }
   };
@@ -416,6 +519,11 @@ const AdminDashboard = () => {
         riderMarkerUrl,
         messagingProvider,
         emailProvider,
+        requireWhatsappForLogin,
+        maxSessions,
+        maxLoginAttempts,
+        lockoutMinutes,
+        fraudAutoFreezeScore,
       });
       setMessage('Settings saved');
       await refreshBranding();
@@ -444,7 +552,7 @@ const AdminDashboard = () => {
         )}
 
         <div style={{ display: 'flex', gap: 6, marginBottom: 24, flexWrap: 'wrap' }}>
-          {TABS.map((t) => (
+          {visibleTabs.map((t) => (
             <button key={t} onClick={() => setTab(t)} className={`btn ${tab === t ? 'btn-primary' : 'btn-secondary'}`} style={{ padding: '7px 12px', fontSize: 12, textTransform: 'capitalize' }}>
               {t}
               {t === 'riders' && pendingRiders.length > 0 && <span style={{ background: 'var(--danger)', color: 'white', borderRadius: 10, padding: '1px 6px', fontSize: 11, marginLeft: 4 }}>{pendingRiders.length}</span>}
@@ -513,6 +621,34 @@ const AdminDashboard = () => {
                     <div style={{ fontSize: 13, lineHeight: 1.7, marginBottom: 12 }}>
                       <div><strong>Contact:</strong> {riderDetail.email} · {riderDetail.phone}</div>
                       <div><strong>NIN:</strong> {riderDetail.nin || '—'}</div>
+                      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', margin: '8px 0' }}>
+                        {riderDetail.ninPhotoUrl && (
+                          canDownloadDocs ? (
+                          <a href={riderDetail.ninPhotoUrl} target="_blank" rel="noreferrer">
+                            <img src={riderDetail.ninPhotoUrl} alt="NIN" style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 8 }} />
+                            <div style={{ fontSize: 11 }}>NIN photo</div>
+                          </a>
+                          ) : (
+                          <div>
+                            <img src={riderDetail.ninPhotoUrl} alt="NIN" style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 8 }} />
+                            <div style={{ fontSize: 11 }}>NIN (no download)</div>
+                          </div>
+                          )
+                        )}
+                        {riderDetail.applicationSelfieUrl && (
+                          canDownloadDocs ? (
+                          <a href={riderDetail.applicationSelfieUrl} target="_blank" rel="noreferrer">
+                            <img src={riderDetail.applicationSelfieUrl} alt="Selfie" style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 8 }} />
+                            <div style={{ fontSize: 11 }}>Applicant selfie</div>
+                          </a>
+                          ) : (
+                          <div>
+                            <img src={riderDetail.applicationSelfieUrl} alt="Selfie" style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 8 }} />
+                            <div style={{ fontSize: 11 }}>Selfie (no download)</div>
+                          </div>
+                          )
+                        )}
+                      </div>
                       <div><strong>Status:</strong> {riderDetail.verificationStatus} {riderDetail.isFrozen ? '· Frozen' : ''}</div>
                       <div><strong>Guarantor:</strong> {riderDetail.guarantor?.name || '—'} · {riderDetail.guarantor?.phone || ''} · {riderDetail.guarantor?.address || ''}</div>
                       {riderDetail.verificationNote && <div style={{ color: 'var(--danger)' }}><strong>Note:</strong> {riderDetail.verificationNote}</div>}
@@ -543,10 +679,10 @@ const AdminDashboard = () => {
                         )}
                       </div>
                       <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                        <button type="button" className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: 11 }} onClick={() => deleteRiderData(riderDetail._id, ['bikePhotos'])}>Delete photos</button>
-                        <button type="button" className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: 11 }} onClick={() => deleteRiderData(riderDetail._id, ['documents'])}>Delete docs</button>
-                        <button type="button" className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: 11 }} onClick={() => deleteRiderData(riderDetail._id, ['video'])}>Delete video</button>
-                        <button type="button" className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: 11 }} onClick={() => deleteRiderData(riderDetail._id, ['profilePhoto'])}>Delete profile photo</button>
+                        <button type="button" className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: 11 }} onClick={() => deleteRiderData(riderDetail._id, ['bikePhotos'])} disabled={!canDeleteDocs}>Delete photos</button>
+                        <button type="button" className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: 11 }} onClick={() => deleteRiderData(riderDetail._id, ['documents'])} disabled={!canDeleteDocs} title={!canDeleteDocs ? 'Managers cannot delete documents' : ''}>Delete docs</button>
+                        <button type="button" className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: 11 }} onClick={() => deleteRiderData(riderDetail._id, ['video'])} disabled={!canDeleteDocs}>Delete video</button>
+                        <button type="button" className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: 11 }} onClick={() => deleteRiderData(riderDetail._id, ['profilePhoto'])} disabled={!canDeleteDocs}>Delete profile photo</button>
                       </div>
                     </div>
                     {(riderDetail.bikeDetails || []).map((b, i) => (
@@ -564,7 +700,13 @@ const AdminDashboard = () => {
                         )}
                         <div style={{ marginTop: 8, fontSize: 12 }}>
                           {(b.documentUrls || (b.papersUrl ? [b.papersUrl] : [])).map((u) => (
-                            <div key={u}><a href={u} target="_blank" rel="noreferrer">Document</a></div>
+                            <div key={u}>
+                              {canDownloadDocs ? (
+                                <a href={u} target="_blank" rel="noreferrer" download>Document</a>
+                              ) : (
+                                <span style={{ fontSize: 12, color: 'var(--gray-500)' }} title="Managers cannot download documents">Document (preview only — no download)</span>
+                              )}
+                            </div>
                           ))}
                         </div>
                       </div>
@@ -624,6 +766,20 @@ const AdminDashboard = () => {
                       <button type="button" className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => setMerchantDetail(null)}>Close</button>
                     </div>
                     <p style={{ fontSize: 13 }}>NIN: {merchantDetail.merchant?.nin} · Guarantor: {merchantDetail.merchant?.guarantor?.name}</p>
+                    <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', margin: '8px 0' }}>
+                      {merchantDetail.merchant?.ninPhotoUrl && (
+                        <a href={merchantDetail.merchant.ninPhotoUrl} target="_blank" rel="noreferrer">
+                          <img src={merchantDetail.merchant.ninPhotoUrl} alt="NIN" style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 8 }} />
+                          <div style={{ fontSize: 11 }}>NIN photo</div>
+                        </a>
+                      )}
+                      {merchantDetail.merchant?.applicationSelfieUrl && (
+                        <a href={merchantDetail.merchant.applicationSelfieUrl} target="_blank" rel="noreferrer">
+                          <img src={merchantDetail.merchant.applicationSelfieUrl} alt="Selfie" style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 8 }} />
+                          <div style={{ fontSize: 11 }}>Applicant selfie</div>
+                        </a>
+                      )}
+                    </div>
                     <h4 style={{ fontSize: 14 }}>Applied bikes</h4>
                     {(merchantDetail.merchant?.fleetApplication?.bikes || merchantDetail.merchant?.bikeDetails || []).map((b, i) => (
                       <div key={i} style={{ fontSize: 13, marginBottom: 8 }}>
@@ -653,7 +809,11 @@ const AdminDashboard = () => {
               </div>
             )}
 
-{tab === 'customers' && (
+{tab === 'kyc' && <KycReview />}
+            {tab === 'security' && <SecurityDesk />}
+            {tab === 'managers' && isAdmin && <ManagersDesk />}
+
+            {tab === 'customers' && (
               <div>
                 {customers.map((c) => (
                   <div key={c._id} className="card" style={{ padding: 12, marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}>
@@ -700,6 +860,7 @@ const AdminDashboard = () => {
                         {h.photo && <a href={h.photo} target="_blank" rel="noreferrer">Media</a>}
                       </div>
                     ))}
+                    <JobMediaGallery job={timelineJob} title="All job media" />
                   </div>
                 )}
               </div>
@@ -713,9 +874,11 @@ const AdminDashboard = () => {
                     <p style={{ fontSize: 13, color: 'var(--gray-500)' }}>{j.customer?.name} → {j.rider?.name || '—'}</p>
                     {j.freezeReason && <p style={{ fontSize: 12, color: 'var(--danger)' }}>{j.freezeReason}</p>}
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
-                      <button className="btn btn-primary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => disputeAction(j._id, 'resolve_pay_rider')}>Pay rider</button>
+                      <button className="btn btn-primary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => disputeAction(j._id, 'resolve_pay_rider')}>Pay rider + complete</button>
                       <button className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => disputeAction(j._id, 'resolve_refund_customer')}>Customer side</button>
-                      <button className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => disputeAction(j._id, 'resolve_partial')}>Partial</button>
+                      <button className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => disputeAction(j._id, 'resolve_partial')}>Partial pay</button>
+                      <button className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => disputeAction(j._id, 'resolve_requeue')}>Requeue offers</button>
+                      <button className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => openJobTimeline(j._id)}>Details</button>
                     </div>
                   </div>
                 ))}
@@ -921,6 +1084,7 @@ const AdminDashboard = () => {
                         )}
                       </div>
                     ))}
+                    <JobMediaGallery job={timelineJob} title="All job media" />
                   </div>
                 )}
               </div>
@@ -928,11 +1092,96 @@ const AdminDashboard = () => {
 
 {tab === 'finance' && (
               <div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 20 }}>
-                  <div className="card" style={{ textAlign: 'center' }}><div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Owed</div><div style={{ fontSize: 20, fontWeight: 800, color: 'var(--danger)' }}>₦{(finance.totals.owed || 0).toLocaleString()}</div></div>
-                  <div className="card" style={{ textAlign: 'center' }}><div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Collected</div><div style={{ fontSize: 20, fontWeight: 800, color: 'var(--primary)' }}>₦{(finance.totals.collected || 0).toLocaleString()}</div></div>
-                  <div className="card" style={{ textAlign: 'center' }}><div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Rider net</div><div style={{ fontSize: 20, fontWeight: 800 }}>₦{(finance.totals.earned || 0).toLocaleString()}</div></div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16, alignItems: 'center' }}>
+                  <select value={financeDays} onChange={(e) => setFinanceDays(Number(e.target.value))}>
+                    <option value={7}>Last 7 days</option>
+                    <option value={14}>Last 14 days</option>
+                    <option value={30}>Last 30 days</option>
+                    <option value={90}>Last 90 days</option>
+                  </select>
+                  <button type="button" className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: 13 }} onClick={() => loadFinance()}>Refresh</button>
                 </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 16 }}>
+                  <div className="card" style={{ textAlign: 'center', padding: 12 }}>
+                    <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Commission owed (live)</div>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--danger)' }}>₦{(finance.totals.owed || 0).toLocaleString()}</div>
+                  </div>
+                  <div className="card" style={{ textAlign: 'center', padding: 12 }}>
+                    <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Collected (lifetime)</div>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--primary)' }}>₦{(finance.totals.collected || 0).toLocaleString()}</div>
+                  </div>
+                  <div className="card" style={{ textAlign: 'center', padding: 12 }}>
+                    <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Rider earnings (lifetime)</div>
+                    <div style={{ fontSize: 20, fontWeight: 800 }}>₦{(finance.totals.earned || 0).toLocaleString()}</div>
+                  </div>
+                  <div className="card" style={{ textAlign: 'center', padding: 12 }}>
+                    <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Pending clearance</div>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: '#b45309' }}>₦{(finance.totals.pendingClearance || 0).toLocaleString()}</div>
+                  </div>
+                  <div className="card" style={{ textAlign: 'center', padding: 12 }}>
+                    <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Available balances</div>
+                    <div style={{ fontSize: 18, fontWeight: 800 }}>₦{(finance.totals.availableBalance || 0).toLocaleString()}</div>
+                  </div>
+                </div>
+
+                {finance.compare && (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 16 }}>
+                    <div className="card" style={{ padding: 12 }}>
+                      <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Period revenue</div>
+                      <div style={{ fontSize: 16, fontWeight: 800 }}>
+                        ₦{(finance.compare.revenue?.current || 0).toLocaleString()}
+                        <ChangeBadge pct={finance.compare.revenue?.changePct} />
+                      </div>
+                    </div>
+                    <div className="card" style={{ padding: 12 }}>
+                      <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Period commission</div>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--primary)' }}>
+                        ₦{Math.round(finance.compare.commission?.current || 0).toLocaleString()}
+                        <ChangeBadge pct={finance.compare.commission?.changePct} />
+                      </div>
+                    </div>
+                    <div className="card" style={{ padding: 12 }}>
+                      <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Withdraws paid</div>
+                      <div style={{ fontSize: 16, fontWeight: 800 }}>
+                        ₦{(finance.compare.withdrawPaid?.current || 0).toLocaleString()}
+                        <ChangeBadge pct={finance.compare.withdrawPaid?.changePct} />
+                      </div>
+                    </div>
+                    <div className="card" style={{ padding: 12 }}>
+                      <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Completed jobs</div>
+                      <div style={{ fontSize: 16, fontWeight: 800 }}>
+                        {finance.compare.jobs?.current || 0}
+                        <ChangeBadge pct={finance.compare.jobs?.changePct} />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {finance.series?.length > 0 && (
+                  <div style={{ display: 'grid', gap: 12, marginBottom: 16 }}>
+                    <BarChart
+                      title={`Revenue per day (${finance.periodDays || financeDays}d)`}
+                      data={finance.series.map((s) => ({ label: s.date.slice(5), value: s.revenue }))}
+                      color="#2563eb"
+                      height={130}
+                    />
+                    <BarChart
+                      title="Commission per day"
+                      data={finance.series.map((s) => ({ label: s.date.slice(5), value: s.commission }))}
+                      color="#0d6b3a"
+                      height={130}
+                    />
+                    <BarChart
+                      title="Withdrawals paid per day (₦)"
+                      data={finance.series.map((s) => ({ label: s.date.slice(5), value: s.withdrawAmount }))}
+                      color="#b45309"
+                      height={130}
+                    />
+                  </div>
+                )}
+
+                <h3 style={{ fontSize: 16, marginBottom: 10 }}>Riders with commission owed</h3>
                 {finance.riders.map((r) => (
                   <div key={r._id} className="card" style={{ padding: 12, marginBottom: 8, display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
                     <div>
@@ -953,7 +1202,38 @@ const AdminDashboard = () => {
               </div>
             )}
 
-            {tab === 'notify' && (
+            
+                <h3 style={{ fontSize: 16, margin: '20px 0 10px' }}>Withdraw history (period)</h3>
+                {(finance.withdrawHistory || []).length === 0 ? (
+                  <p style={{ color: 'var(--gray-500)', fontSize: 13 }}>No withdraw requests in this period</p>
+                ) : (
+                  <div className="card" style={{ padding: 0, overflow: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                      <thead>
+                        <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--gray-200)' }}>
+                          <th style={{ padding: 10 }}>Date</th>
+                          <th style={{ padding: 10 }}>Rider</th>
+                          <th style={{ padding: 10 }}>Amount</th>
+                          <th style={{ padding: 10 }}>Status</th>
+                          <th style={{ padding: 10 }}>Bank</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {finance.withdrawHistory.map((w) => (
+                          <tr key={w.id} style={{ borderBottom: '1px solid var(--gray-100)' }}>
+                            <td style={{ padding: 10 }}>{w.createdAt ? new Date(w.createdAt).toLocaleString() : '—'}</td>
+                            <td style={{ padding: 10 }}>{w.rider?.name || '—'}<div style={{ fontSize: 11, color: 'var(--gray-500)' }}>{w.rider?.phone}</div></td>
+                            <td style={{ padding: 10, fontWeight: 700 }}>₦{(w.amount || 0).toLocaleString()}</td>
+                            <td style={{ padding: 10 }}><span className="badge">{w.status}</span></td>
+                            <td style={{ padding: 10, fontSize: 12 }}>{w.bankSnapshot?.bankName || '—'} · {w.bankSnapshot?.accountNumber || ''}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+{tab === 'notify' && (
               <div className="card" style={{ maxWidth: 520 }}>
                 <h2 style={{ fontSize: 18, marginBottom: 12 }}>In-app notification</h2>
                 <form onSubmit={sendNotify}>
@@ -1020,12 +1300,32 @@ const AdminDashboard = () => {
             )}
 
             {tab === 'reports' && (
+              <>
+              <div className="card" style={{ padding: 14, marginBottom: 16 }}>
+                <h3 style={{ fontSize: 15, marginBottom: 8 }}>Period CSV export (jobs + withdrawals)</h3>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 10 }}>
+                  <input type="date" value={exportFrom} onChange={(e) => setExportFrom(e.target.value)} />
+                  <input type="date" value={exportTo} onChange={(e) => setExportTo(e.target.value)} />
+                  <button type="button" className="btn btn-primary" onClick={downloadAdminCsv}>Download CSV</button>
+                </div>
+              </div>
+
               <div>
-                <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center' }}>
-                  <select value={reportDays} onChange={(e) => { setReportDays(Number(e.target.value)); loadReport(Number(e.target.value)); }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16, alignItems: 'center' }}>
+                  <select value={reportDays} onChange={(e) => setReportDays(Number(e.target.value))}>
                     <option value={7}>Last 7 days</option>
+                    <option value={14}>Last 14 days</option>
                     <option value={30}>Last 30 days</option>
                     <option value={90}>Last 90 days</option>
+                  </select>
+                  <select value={reportSegment} onChange={(e) => setReportSegment(e.target.value)}>
+                    <option value="all">All jobs</option>
+                    <option value="cod">Cash on delivery</option>
+                    <option value="bank">Bank transfer</option>
+                    <option value="map">Map mode</option>
+                    <option value="text">Text mode</option>
+                    <option value="fleet">Fleet riders</option>
+                    <option value="independent">Independent riders</option>
                   </select>
                   <button className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: 13 }} onClick={() => loadReport()}>Refresh</button>
                 </div>
@@ -1039,6 +1339,65 @@ const AdminDashboard = () => {
                       <div className="card" style={{ textAlign: 'center', padding: 14 }}><div style={{ fontSize: 22, fontWeight: 800 }}>{report.users?.newRiders}</div><div style={{ fontSize: 12, color: 'var(--gray-500)' }}>New riders</div></div>
                       <div className="card" style={{ textAlign: 'center', padding: 14 }}><div style={{ fontSize: 18, fontWeight: 800, color: 'var(--danger)' }}>₦{(report.finance?.commissionOwed || 0).toLocaleString()}</div><div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Still owed</div></div>
                     </div>
+                    {report.compare && (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 16 }}>
+                        <div className="card" style={{ padding: 12 }}>
+                          <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Jobs vs prior period</div>
+                          <div style={{ fontSize: 20, fontWeight: 800 }}>
+                            {report.compare.jobs?.current}
+                            <ChangeBadge pct={report.compare.jobs?.changePct} />
+                          </div>
+                        </div>
+                        <div className="card" style={{ padding: 12 }}>
+                          <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Revenue vs prior</div>
+                          <div style={{ fontSize: 18, fontWeight: 800 }}>
+                            ₦{(report.compare.revenue?.current || 0).toLocaleString()}
+                            <ChangeBadge pct={report.compare.revenue?.changePct} />
+                          </div>
+                        </div>
+                        <div className="card" style={{ padding: 12 }}>
+                          <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Commission vs prior</div>
+                          <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--primary)' }}>
+                            ₦{Math.round(report.compare.commission?.current || 0).toLocaleString()}
+                            <ChangeBadge pct={report.compare.commission?.changePct} />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {report.series?.length > 0 && (
+                      <div style={{ marginBottom: 16 }}>
+                        <BarChart
+                          title={`Jobs per day (${report.periodDays}d · ${report.segment || 'all'})`}
+                          data={report.series.map((s) => ({
+                            label: s.date.slice(5),
+                            value: s.jobs,
+                          }))}
+                          color="#0d6b3a"
+                          height={140}
+                        />
+                      </div>
+                    )}
+                    {report.series?.length > 0 && (
+                      <div style={{ marginBottom: 16 }}>
+                        <BarChart
+                          title="Agreed revenue per day (₦)"
+                          data={report.series.map((s) => ({
+                            label: s.date.slice(5),
+                            value: s.revenue,
+                          }))}
+                          color="#2563eb"
+                          height={140}
+                        />
+                      </div>
+                    )}
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12, marginBottom: 16 }}>
+                      <HorizontalBars title="By payment method" entries={report.jobs?.byPayment || {}} color="#0d6b3a" />
+                      <HorizontalBars title="By booking mode" entries={report.jobs?.byMode || {}} color="#7c3aed" />
+                      <HorizontalBars title="By package size" entries={report.jobs?.bySize || {}} color="#b45309" />
+                    </div>
+
                     <div className="card">
                       <h3 style={{ fontSize: 15, marginBottom: 12 }}>Jobs by status</h3>
                       {Object.entries(report.jobs?.byStatus || {}).map(([k, v]) => (
@@ -1050,6 +1409,7 @@ const AdminDashboard = () => {
                   </>
                 )}
               </div>
+              </>
             )}
 
             {tab === 'settings' && (
@@ -1152,6 +1512,31 @@ const AdminDashboard = () => {
                       ))}
                     </>
                   )}
+                  <hr style={{ margin: '16px 0', border: 'none', borderTop: '1px solid var(--gray-200)' }} />
+                  <h3 style={{ fontSize: 15, marginBottom: 12 }}>Security policy</h3>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                    <input type="checkbox" checked={requireWhatsappForLogin} onChange={(e) => setRequireWhatsappForLogin(e.target.checked)} />
+                    Require WhatsApp verification before login access
+                  </label>
+                  <div className="form-group">
+                    <label>Max concurrent sessions</label>
+                    <input type="number" min={1} max={10} value={maxSessions} onChange={(e) => setMaxSessions(Number(e.target.value))} />
+                  </div>
+                  <div className="form-group">
+                    <label>Max failed login attempts</label>
+                    <input type="number" min={3} max={20} value={maxLoginAttempts} onChange={(e) => setMaxLoginAttempts(Number(e.target.value))} />
+                  </div>
+                  <div className="form-group">
+                    <label>Lockout minutes</label>
+                    <input type="number" min={1} max={120} value={lockoutMinutes} onChange={(e) => setLockoutMinutes(Number(e.target.value))} />
+                  </div>
+                  <div className="form-group">
+                    <label>Auto-freeze fraud score threshold</label>
+                    <input type="number" min={5} max={200} value={fraudAutoFreezeScore} onChange={(e) => setFraudAutoFreezeScore(Number(e.target.value))} />
+                    <small style={{ fontSize: 12, color: 'var(--gray-500)' }}>
+                      When a user&apos;s fraud score reaches this value, the account is frozen automatically (in-app + email if allowed).
+                    </small>
+                  </div>
                   <button type="submit" className="btn btn-primary btn-block" disabled={settingsSaving}>{settingsSaving ? 'Saving...' : 'Save settings'}</button>
                 </form>
               </div>

@@ -12,7 +12,7 @@ const ForRiders = () => (
     <div className="container" style={{ padding: '48px 16px', maxWidth: 960 }}>
       <h1 style={{ fontSize: 32, fontWeight: 800, marginBottom: 12 }}>Ride with ZumaDash</h1>
       <p style={{ color: 'var(--gray-500)', marginBottom: 40, fontSize: 16, maxWidth: 600 }}>
-        Whether you own one bike or a small fleet, we connect you to deliveries only in Dutse, Kubwa and Bwari — where you already know the roads.
+        Whether you own one bike or a small fleet, we connect you to deliveries only in Dutse, Kubwa, Bwari and Ushafa — where you already know the roads.
       </p>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 24, marginBottom: 48 }}>
@@ -79,7 +79,7 @@ const ForRiders = () => (
           <li>Bike details (plate, model) — 1–2 bikes for individuals</li>
           <li>Guarantor information</li>
           <li>Admin verification before you can take jobs</li>
-          <li>Local knowledge of Dutse, Kubwa and/or Bwari</li>
+          <li>Local knowledge of Dutse, Kubwa, Bwari and/or Ushafa</li>
         </ul>
         <p style={{ marginTop: 16, fontSize: 13 }}>
           <Link to="/terms-riders" style={{ color: 'var(--primary)', fontWeight: 600 }}>Read Rider Terms →</Link>

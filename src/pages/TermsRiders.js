@@ -24,7 +24,7 @@ const TermsRiders = () => (
 
       <h2 style={{ fontSize: 17, margin: '24px 0 8px' }}>3. Jobs & conduct</h2>
       <ul style={{ paddingLeft: 20, lineHeight: 1.8, fontSize: 14, color: 'var(--gray-700)' }}>
-        <li>Only accept jobs you can complete within Dutse, Kubwa and Bwari.</li>
+        <li>Only accept jobs you can complete within Dutse, Kubwa, Bwari and Ushafa.</li>
         <li>Update status honestly: LIVE, PICKED, DELIVERED with real photo proof.</li>
         <li>False status updates (e.g. marking DELIVERED without delivering) are grounds for freeze or ban.</li>
         <li>Treat customers and packages with care.</li>
@@ -45,7 +45,7 @@ const TermsRiders = () => (
 
       <h2 style={{ fontSize: 17, margin: '24px 0 8px' }}>6. Service area</h2>
       <p style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--gray-700)' }}>
-        ZumaDash jobs are limited to Dutse, Kubwa and Bwari. Do not accept or divert jobs outside this corridor through the platform.
+        ZumaDash jobs are limited to Dutse, Kubwa, Bwari and Ushafa. Do not accept or divert jobs outside this corridor through the platform.
       </p>
 
       <p style={{ marginTop: 32, fontSize: 13, color: 'var(--gray-500)' }}>

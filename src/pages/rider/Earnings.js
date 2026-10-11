@@ -13,6 +13,9 @@ const RiderEarnings = () => {
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [savingBank, setSavingBank] = useState(false);
   const [withdrawing, setWithdrawing] = useState(false);
+  const [stmtFrom, setStmtFrom] = useState('');
+  const [stmtTo, setStmtTo] = useState('');
+  const [stmtBusy, setStmtBusy] = useState(false);
 
   const load = async () => {
     try {
@@ -47,6 +50,39 @@ const RiderEarnings = () => {
       });
     }
   }, [user]);
+
+  const downloadStatement = async (format, email) => {
+    setStmtBusy(true);
+    setMessage('');
+    try {
+      const params = new URLSearchParams();
+      if (stmtFrom) params.set('from', stmtFrom);
+      if (stmtTo) params.set('to', stmtTo);
+      params.set('format', format);
+      if (email) params.set('email', '1');
+      const res = await api.get(`/api/users/earnings/statement?${params.toString()}`, {
+        responseType: 'blob',
+      });
+      const blob = new Blob([res.data], {
+        type: format === 'csv' ? 'text/csv' : 'application/pdf',
+      });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `zumadash-earnings.${format === 'csv' ? 'csv' : 'pdf'}`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+      setMessage(
+        email
+          ? 'PDF downloaded. If your email is verified, a copy was also emailed.'
+          : `Statement downloaded (${format.toUpperCase()}).`
+      );
+    } catch (err) {
+      setMessage(err.response?.data?.message || 'Could not generate statement');
+    } finally {
+      setStmtBusy(false);
+    }
+  };
 
   const commissionOwed = user?.commissionOwed || 0;
   const pendingClearance = user?.pendingClearance || 0;
@@ -95,6 +131,35 @@ const RiderEarnings = () => {
           </div>
         )}
 
+        {/* Step 14 – earnings statement */}
+        <div className="card" style={{ padding: 16, marginBottom: 16 }}>
+          <h3 style={{ fontSize: 16, marginBottom: 8 }}>Earnings statement</h3>
+          <p style={{ fontSize: 13, color: 'var(--gray-500)', marginBottom: 12 }}>
+            Download a PDF or CSV for a period. Optionally email the PDF to your verified email.
+          </p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
+            <div>
+              <label style={{ fontSize: 12 }}>From</label>
+              <input type="date" value={stmtFrom} onChange={(e) => setStmtFrom(e.target.value)} />
+            </div>
+            <div>
+              <label style={{ fontSize: 12 }}>To</label>
+              <input type="date" value={stmtTo} onChange={(e) => setStmtTo(e.target.value)} />
+            </div>
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            <button type="button" className="btn btn-primary" disabled={stmtBusy} onClick={() => downloadStatement('pdf', false)}>
+              {stmtBusy ? 'Working…' : 'Download PDF'}
+            </button>
+            <button type="button" className="btn btn-secondary" disabled={stmtBusy} onClick={() => downloadStatement('csv', false)}>
+              Download CSV
+            </button>
+            <button type="button" className="btn btn-secondary" disabled={stmtBusy} onClick={() => downloadStatement('pdf', true)}>
+              PDF + email me
+            </button>
+          </div>
+        </div>
+
         {/* NOW-2: three balances */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 24 }}>
           <div className="card" style={{ textAlign: 'center', padding: 14 }}>
@@ -111,11 +176,13 @@ const RiderEarnings = () => {
           </div>
           <div className="card" style={{ textAlign: 'center', padding: 14 }}>
             <div style={{ fontSize: 12, color: 'var(--gray-500)', marginBottom: 4 }}>Commission owed</div>
-            <div style={{
-              fontSize: 20,
-              fontWeight: 800,
-              color: commissionOwed > 0 ? 'var(--danger)' : 'var(--success)',
-            }}>
+            <div
+              style={{
+                fontSize: 20,
+                fontWeight: 800,
+                color: commissionOwed > 0 ? 'var(--danger)' : 'var(--success)',
+              }}
+            >
               ₦{commissionOwed.toLocaleString()}
             </div>
             <div style={{ fontSize: 10, color: 'var(--gray-400)' }}>COD only</div>
@@ -143,21 +210,34 @@ const RiderEarnings = () => {
               {bankStatus === 'none' && 'Not submitted'}
               {bankStatus === 'submitted' && 'Under review'}
               {bankStatus === 'approved' && 'Approved'}
-              {bankStatus === 'rejected' && `Rejected${user?.riderBank?.rejectionReason ? `: ${user.riderBank.rejectionReason}` : ''}`}
+              {bankStatus === 'rejected' &&
+                `Rejected${user?.riderBank?.rejectionReason ? `: ${user.riderBank.rejectionReason}` : ''}`}
             </strong>
           </p>
           <form onSubmit={submitBank}>
             <div className="form-group">
               <label>Bank name</label>
-              <input required value={bankForm.bankName} onChange={(e) => setBankForm({ ...bankForm, bankName: e.target.value })} />
+              <input
+                required
+                value={bankForm.bankName}
+                onChange={(e) => setBankForm({ ...bankForm, bankName: e.target.value })}
+              />
             </div>
             <div className="form-group">
               <label>Account name</label>
-              <input required value={bankForm.accountName} onChange={(e) => setBankForm({ ...bankForm, accountName: e.target.value })} />
+              <input
+                required
+                value={bankForm.accountName}
+                onChange={(e) => setBankForm({ ...bankForm, accountName: e.target.value })}
+              />
             </div>
             <div className="form-group">
               <label>Account number</label>
-              <input required value={bankForm.accountNumber} onChange={(e) => setBankForm({ ...bankForm, accountNumber: e.target.value })} />
+              <input
+                required
+                value={bankForm.accountNumber}
+                onChange={(e) => setBankForm({ ...bankForm, accountNumber: e.target.value })}
+              />
             </div>
             <button className="btn btn-primary" type="submit" disabled={savingBank}>
               {savingBank ? 'Saving…' : bankStatus === 'rejected' ? 'Resubmit bank details' : 'Submit bank details'}
@@ -171,7 +251,10 @@ const RiderEarnings = () => {
           <p style={{ fontSize: 13, color: 'var(--gray-500)', marginBottom: 12 }}>
             Only from available balance. Blocked if commission owed or bank not approved.
           </p>
-          <form onSubmit={requestWithdraw} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <form
+            onSubmit={requestWithdraw}
+            style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}
+          >
             <div className="form-group" style={{ marginBottom: 0, flex: 1, minWidth: 140 }}>
               <label>Amount (₦)</label>
               <input
@@ -195,7 +278,10 @@ const RiderEarnings = () => {
             <div style={{ marginTop: 16 }}>
               <h3 style={{ fontSize: 14, marginBottom: 8 }}>Recent withdraws</h3>
               {withdraws.map((w) => (
-                <div key={w._id} style={{ fontSize: 13, padding: '8px 0', borderBottom: '1px solid var(--gray-200)' }}>
+                <div
+                  key={w._id}
+                  style={{ fontSize: 13, padding: '8px 0', borderBottom: '1px solid var(--gray-200)' }}
+                >
                   ₦{(w.amount || 0).toLocaleString()} · {w.status}
                   {w.paymentReference ? ` · Ref ${w.paymentReference}` : ''}
                   <span style={{ color: 'var(--gray-400)', marginLeft: 8 }}>
@@ -215,14 +301,22 @@ const RiderEarnings = () => {
             <p style={{ color: 'var(--gray-500)' }}>No jobs yet</p>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {jobs.map((job) => {
               const isBank = job.paymentMethod === 'bank_transfer';
               const isCleared = job.status === 'completed';
               const isPendingClear = job.status === 'pending_clearance';
               return (
                 <div key={job._id} className="card" style={{ padding: 16 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, flexWrap: 'wrap', gap: 6 }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      marginBottom: 4,
+                      flexWrap: 'wrap',
+                      gap: 6,
+                    }}
+                  >
                     <strong style={{ fontSize: 14 }}>{job.jobId}</strong>
                     <span className="badge badge-info">{String(job.status).replace(/_/g, ' ')}</span>
                   </div>
@@ -251,7 +345,11 @@ const RiderEarnings = () => {
                       ) : (
                         <span style={{ color: isCleared ? 'var(--danger)' : 'var(--gray-500)' }}>
                           Commission ₦{job.commissionAmount.toLocaleString()}
-                          {isCleared ? ' — owed (COD)' : isPendingClear ? ' — owed after clearance (COD)' : ''}
+                          {isCleared
+                            ? ' — owed (COD)'
+                            : isPendingClear
+                              ? ' — owed after clearance (COD)'
+                              : ''}
                         </span>
                       )}
                     </div>

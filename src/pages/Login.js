@@ -3,11 +3,13 @@ import { useBranding, BrandLogo } from '../context/BrandingContext';
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useI18n } from '../context/I18nContext';
 import api from '../services/api';
 import { getPendingBooking, createJobFromPending } from '../utils/pendingBooking';
 import { ensureCloudinaryUrl } from '../services/upload';
 
 const Login = () => {
+  const { t } = useI18n();
   const { platformName } = useBranding();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -24,6 +26,22 @@ const Login = () => {
     setLoading(true);
     try {
       const user = await login(email, password);
+
+      if (user.needsDeviceOtp && user.pendingToken) {
+        navigate('/device-otp', {
+          replace: true,
+          state: {
+            pendingToken: user.pendingToken,
+            otpChannel: user.otpChannel || 'whatsapp',
+          },
+        });
+        return;
+      }
+
+      if (user.needsWhatsappVerification || user.whatsappVerified === false) {
+        navigate('/verify-whatsapp', { replace: true });
+        return;
+      }
 
       // Complete pending guest booking if any
       if (getPendingBooking() && user.role === 'customer') {
@@ -42,11 +60,18 @@ const Login = () => {
       }
 
       if (user.role === 'rider') navigate('/rider');
-      else if (user.role === 'admin') navigate('/admin');
+      else if (user.role === 'admin' || user.role === 'manager') navigate('/admin');
       else if (user.role === 'merchant') navigate('/merchant');
       else navigate(location.state?.from || '/dashboard');
     } catch (err) {
-      setError(err.response?.data?.message || 'Login failed. Please try again.');
+      const data = err.response?.data;
+      if (data?.code === 'LOGIN_LOCKED' || err.response?.status === 429) {
+        setError(data?.message || 'Too many attempts. Try again later.');
+      } else if (data?.code === 'ACCOUNT_FROZEN' || err.response?.status === 403) {
+        setError(data?.message || 'Your account is frozen. Contact support.');
+      } else {
+        setError(data?.message || 'Login failed. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -59,7 +84,7 @@ const Login = () => {
           <Link to="/" style={{ fontSize: 24, fontWeight: 800, color: 'var(--primary)', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
             <BrandLogo size={28} /> {platformName}
           </Link>
-          <h2 style={{ marginTop: 16, fontSize: 22 }}>Welcome back</h2>
+          <h2 style={{ marginTop: 16, fontSize: 22 }}>{t('auth.loginTitle')}</h2>
           <p style={{ color: 'var(--gray-500)', fontSize: 14 }}>
             {fromBooking ? 'Login to complete your booking' : 'Login to continue'}
           </p>
@@ -92,7 +117,7 @@ const Login = () => {
         </form>
 
         <p className="text-center mt-4" style={{ fontSize: 14, color: 'var(--gray-500)' }}>
-          Don't have an account?{' '}
+          {t('auth.noAccount')}{' '}
           <Link to="/register" state={{ fromBooking }} style={{ color: 'var(--primary)', fontWeight: 600 }}>Sign up</Link>
         </p>
         <p className="text-center mt-2" style={{ fontSize: 13 }}>

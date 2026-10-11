@@ -8,7 +8,7 @@ const steps = [
   {
     num: 1,
     title: 'Book in seconds',
-    desc: 'Describe pickup and drop-off with text and optional photos. Landmarks work best in Dutse, Kubwa and Bwari — no formal street address required.',
+    desc: 'Describe pickup and drop-off with text and optional photos. Landmarks work best in Dutse, Kubwa, Bwari and Ushafa — no formal street address required.',
   },
   {
     num: 2,
@@ -34,7 +34,7 @@ const HowItWorks = () => (
     <div className="container" style={{ padding: '48px 16px', maxWidth: 900 }}>
       <h1 style={{ fontSize: 32, fontWeight: 800, marginBottom: 12 }}>How ZumaDash Works</h1>
       <p style={{ color: 'var(--gray-500)', marginBottom: 32, fontSize: 16, maxWidth: 560 }}>
-        Built only for Dutse, Kubwa and Bwari — so deliveries are faster, more reliable, and priced fairly.
+        Built only for Dutse, Kubwa, Bwari and Ushafa — so deliveries are faster, more reliable, and priced fairly.
       </p>
 
       <img

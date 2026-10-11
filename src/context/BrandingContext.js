@@ -36,7 +36,7 @@ export const BrandingProvider = ({ children }) => {
   }, []);
 
   const applyDocumentTitle = useCallback((name) => {
-    document.title = `${name} | Delivery for Dutse, Kubwa & Bwari`;
+    document.title = `${name} | Delivery for Dutse, Kubwa, Bwari & Ushafa`;
   }, []);
 
   const refreshBranding = useCallback(async () => {

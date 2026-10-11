@@ -11,7 +11,7 @@ const Terms = () => (
 
       <h2 style={{ fontSize: 17, margin: '24px 0 8px' }}>For Customers</h2>
       <ul style={{ paddingLeft: 20, lineHeight: 1.8, color: 'var(--gray-700)', fontSize: 14 }}>
-        <li>ZumaDash operates only within Dutse, Kubwa and Bwari.</li>
+        <li>ZumaDash operates only within Dutse, Kubwa, Bwari and Ushafa.</li>
         <li>You agree on the final price with the rider before the job starts.</li>
         <li>Provide accurate pickup and drop-off descriptions (landmarks + photos help a lot).</li>
         <li>Photo proof is required at pickup and delivery stages.</li>
@@ -38,7 +38,7 @@ const Terms = () => (
       </ul>
 
       <p style={{ marginTop: 32, fontSize: 13, color: 'var(--gray-500)' }}>
-        Last updated: October 2026 • ZumaDash – Dutse, Kubwa & Bwari
+        Last updated: October 2026 • ZumaDash – Dutse, Kubwa, Bwari & Ushafa
       </p>
     </div>
   </div>

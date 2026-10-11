@@ -8,11 +8,11 @@ const TermsCustomers = () => (
     <PublicNavbar />
     <div className="container" style={{ padding: '40px 16px', maxWidth: 720 }}>
       <h1 style={{ fontSize: 28, fontWeight: 800, marginBottom: 8 }}>Terms & Conditions — Customers</h1>
-      <p style={{ color: 'var(--gray-500)', fontSize: 14, marginBottom: 28 }}>ZumaDash delivery service for Dutse, Kubwa and Bwari.</p>
+      <p style={{ color: 'var(--gray-500)', fontSize: 14, marginBottom: 28 }}>ZumaDash delivery service for Dutse, Kubwa, Bwari and Ushafa.</p>
 
       <h2 style={{ fontSize: 17, margin: '24px 0 8px' }}>1. Service area</h2>
       <p style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--gray-700)' }}>
-        ZumaDash only facilitates deliveries within Dutse, Kubwa and Bwari. Jobs outside this area are not supported.
+        ZumaDash only facilitates deliveries within Dutse, Kubwa, Bwari and Ushafa. Jobs outside this area are not supported.
       </p>
 
       <h2 style={{ fontSize: 17, margin: '24px 0 8px' }}>2. Booking & pricing</h2>

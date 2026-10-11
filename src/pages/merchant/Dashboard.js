@@ -31,6 +31,11 @@ const MerchantDashboard = () => {
   const [chartPeriod, setChartPeriod] = useState('week');
   const [chartData, setChartData] = useState([]);
   const [withdraws, setWithdraws] = useState([]);
+  const [expFrom, setExpFrom] = useState('');
+  const [expTo, setExpTo] = useState('');
+  const [expRider, setExpRider] = useState('');
+  const [expBusy, setExpBusy] = useState(false);
+  const [expMsg, setExpMsg] = useState('');
 
   const loadChart = async (period = chartPeriod) => {
     try {
@@ -48,7 +53,6 @@ const MerchantDashboard = () => {
         .filter((j) => j.status === 'completed')
         .reduce((s, j) => s + (j.agreedPrice || 0), 0);
 
-      // Bar chart metrics — all dashboard numbers for selected period
       const metrics = [
         { key: 'riders', label: 'Riders', value: dig?.riders?.total ?? 0, color: '#0f766e' },
         { key: 'completed', label: 'Completed', value: dig?.jobs?.completed ?? completed, color: '#059669' },
@@ -218,11 +222,69 @@ const MerchantDashboard = () => {
     );
   };
 
+  const exportEarnings = async (format) => {
+    setExpBusy(true);
+    setExpMsg('');
+    try {
+      const params = new URLSearchParams();
+      if (expFrom) params.set('from', expFrom);
+      if (expTo) params.set('to', expTo);
+      if (expRider) params.set('riderId', expRider);
+      params.set('format', format);
+      const res = await api.get(`/api/merchant/earnings/export?${params.toString()}`, {
+        responseType: 'blob',
+      });
+      const blob = new Blob([res.data], {
+        type: format === 'pdf' ? 'application/pdf' : 'text/csv',
+      });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `fleet-earnings.${format === 'pdf' ? 'pdf' : 'csv'}`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+      setExpMsg(`Export downloaded (${format.toUpperCase()})`);
+    } catch (e) {
+      setExpMsg(e.response?.data?.message || 'Export failed');
+    } finally {
+      setExpBusy(false);
+    }
+  };
+
   return (
     <div style={{ minHeight: '100vh', background: 'var(--gray-50)' }}>
       <MerchantNavbar />
 
       <div className="container" style={{ padding: '20px 16px', maxWidth: 900 }}>
+
+        <div className="card" style={{ padding: 16, marginBottom: 16 }}>
+          <h3 style={{ fontSize: 16, marginBottom: 8 }}>Fleet earnings export</h3>
+          {expMsg && <p style={{ fontSize: 13, marginBottom: 8 }}>{expMsg}</p>}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
+            <div>
+              <label style={{ fontSize: 12 }}>From</label>
+              <input type="date" value={expFrom} onChange={(e) => setExpFrom(e.target.value)} />
+            </div>
+            <div>
+              <label style={{ fontSize: 12 }}>To</label>
+              <input type="date" value={expTo} onChange={(e) => setExpTo(e.target.value)} />
+            </div>
+            <div>
+              <label style={{ fontSize: 12 }}>Rider (optional)</label>
+              <select value={expRider} onChange={(e) => setExpRider(e.target.value)}>
+                <option value="">All fleet riders</option>
+                {(riders || []).map((r) => (
+                  <option key={r._id} value={r._id}>{r.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button type="button" className="btn btn-primary" disabled={expBusy} onClick={() => exportEarnings('csv')}>Export CSV</button>
+            <button type="button" className="btn btn-secondary" disabled={expBusy} onClick={() => exportEarnings('pdf')}>Export PDF</button>
+          </div>
+        </div>
+
         {message && (
           <div style={{ background: '#e0f2fe', color: '#075985', padding: 12, borderRadius: 8, marginBottom: 12, fontSize: 14 }}>{message}</div>
         )}
@@ -261,7 +323,7 @@ const MerchantDashboard = () => {
             </div>
           )}
 
-                    <div className="card" style={{ marginBottom: 16 }}>
+          <div className="card" style={{ marginBottom: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
               <h3 style={{ fontSize: 15, margin: 0 }}>Fleet metrics (bar chart)</h3>
               <select value={chartPeriod} onChange={(e) => setChartPeriod(e.target.value)} style={{ padding: 8, borderRadius: 8 }}>

@@ -1,23 +1,26 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useI18n } from '../context/I18nContext';
 import { BrandLogo, useBranding } from '../context/BrandingContext';
 import NotificationBell from './NotificationBell';
 import HamburgerButton from './HamburgerButton';
 import MobileMenu from './MobileMenu';
 
 const CustomerNavbar = () => {
+  const { t } = useI18n();
   const { user, logout } = useAuth();
   const { platformName } = useBranding();
   const [menuOpen, setMenuOpen] = useState(false);
 
   const mobileLinks = [
-    { to: '/dashboard', label: 'Dashboard' },
-    { to: '/book', label: 'Book Delivery' },
-    { to: '/my-deliveries', label: 'My Deliveries' },
-    { to: '/profile', label: 'Profile & Settings' },
-    { to: '/support', label: 'Support' },
-    { label: 'Logout', onClick: logout },
+    { to: '/dashboard', label: t('nav.dashboard') },
+    { to: '/book', label: t('nav.book') },
+    { to: '/my-deliveries', label: t('nav.myDeliveries') },
+    { to: '/settings', label: t('nav.settings') },
+    { to: '/profile', label: t('nav.profile') },
+    { to: '/support', label: t('nav.support') },
+    { label: t('nav.logout'), onClick: logout },
   ];
 
   return (
@@ -29,19 +32,20 @@ const CustomerNavbar = () => {
         </Link>
 
         <div className="hidden md:flex items-center gap-4 text-sm font-medium">
-          <Link to="/book" className="text-white/90 hover:text-white">Book</Link>
-          <Link to="/my-deliveries" className="text-white/90 hover:text-white">My Deliveries</Link>
-          <Link to="/support" className="text-white/90 hover:text-white">Support</Link>
-          <Link to="/profile" className="text-white/90 hover:text-white">{user?.name?.split(' ')[0] || 'Profile'}</Link>
-          <NotificationBell />
+          <Link to="/book" className="text-white/90 hover:text-white">{t('nav.book')}</Link>
+          <Link to="/my-deliveries" className="text-white/90 hover:text-white">{t('nav.myDeliveries')}</Link>
+          <Link to="/support" className="text-white/90 hover:text-white">{t('nav.support')}</Link>
+          <Link to="/settings" className="text-white/90 hover:text-white">{t('nav.settings')}</Link>
+          <Link to="/profile" className="text-white/90 hover:text-white">{user?.name?.split(' ')[0] || t('nav.profile')}</Link>
+<NotificationBell />
           <button type="button" onClick={logout} className="text-white/80 hover:text-white text-sm font-medium bg-transparent">
-            Logout
+            {t('nav.logout')}
           </button>
         </div>
 
         <div className="flex md:hidden items-center gap-1">
           <NotificationBell />
-          <HamburgerButton open={menuOpen} onClick={() => setMenuOpen((o) => !o)} />
+<HamburgerButton open={menuOpen} onClick={() => setMenuOpen((o) => !o)} />
         </div>
       </div>
 

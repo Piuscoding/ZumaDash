@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useI18n } from '../context/I18nContext';
 import PublicNavbar from '../components/PublicNavbar';
 import { useBranding, BrandLogo } from '../context/BrandingContext';
 import '../styles/Landing.css';
@@ -16,6 +17,7 @@ import ctaMountainImg from '../assets/cta-mountain.png';
 const Landing = () => {
   const { isAuthenticated, user } = useAuth();
   const { platformName } = useBranding();
+  const { t } = useI18n();
 
   const getDashboardLink = () => {
     if (!user) return '/login';
@@ -41,27 +43,27 @@ const Landing = () => {
           <div className="hero-text">
             <h1>
               {platformName} – Fast, Trusted Delivery Across{' '}
-              <span>Dutse, Kubwa & Bwari</span>
+              <span>Dutse, Kubwa, Bwari & Ushafa</span>
             </h1>
             <p>
               Built for the people who live and work here. Real riders. Real tracking. Fair prices.
             </p>
             <div className="hero-actions">
               <Link to={isAuthenticated ? '/book' : '/book'} className="btn btn-primary btn-lg">
-                Send a Package
+                {t('landing.ctaBook')}
               </Link>
               <Link
                 to={isAuthenticated ? getDashboardLink() : '/become-a-rider'}
                 className="btn btn-secondary btn-lg"
               >
-                {isAuthenticated ? 'Go to Dashboard' : 'Become a Rider'}
+                {isAuthenticated ? t('nav.dashboard') : t('landing.ctaRider')}
               </Link>
             </div>
           </div>
           <div className="hero-visual">
             <div className="hero-card">
               <div className="hero-card-badge">Local Only</div>
-              <h3>Dutse → Kubwa → Bwari</h3>
+              <h3>Dutse → Kubwa → Bwari → Ushafa</h3>
               <p>Hyper-local. No long city trips. Faster deliveries for Northern Abuja.</p>
             </div>
           </div>
@@ -178,7 +180,17 @@ const Landing = () => {
                 <Link to="/become-a-rider" className="btn btn-primary btn-block">
                   Apply as Fleet Owner
                 </Link>
-                <Link to="/terms-merchants" style={{ display: 'block', textAlign: 'center', marginTop: 10, fontSize: 13, color: 'var(--primary)', fontWeight: 600 }}>
+                <Link
+                  to="/terms-merchants"
+                  style={{
+                    display: 'block',
+                    textAlign: 'center',
+                    marginTop: 10,
+                    fontSize: 13,
+                    color: 'var(--primary)',
+                    fontWeight: 600,
+                  }}
+                >
                   Merchant / fleet terms
                 </Link>
               </div>
@@ -226,7 +238,7 @@ const Landing = () => {
         </div>
       </section>
 
-      {/* Footer – reshuffled columns */}
+      {/* Footer */}
       <footer className="footer">
         <div className="container">
           <div className="footer-inner">
@@ -265,7 +277,9 @@ const Landing = () => {
             </div>
           </div>
           <div className="footer-bottom">
-            <span>© {new Date().getFullYear()} {platformName}. Built for Northern Abuja.</span>
+            <span>
+              © {new Date().getFullYear()} {platformName}. Built for Northern Abuja.
+            </span>
             <span>Dutse · Kubwa · Bwari · Ushafa</span>
           </div>
         </div>

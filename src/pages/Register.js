@@ -3,11 +3,13 @@ import { useBranding, BrandLogo } from '../context/BrandingContext';
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useI18n } from '../context/I18nContext';
 import api from '../services/api';
 import { getPendingBooking, createJobFromPending } from '../utils/pendingBooking';
 import { ensureCloudinaryUrl } from '../services/upload';
 
 const Register = () => {
+  const { t } = useI18n();
   const { platformName } = useBranding();
   const [form, setForm] = useState({ name: '', email: '', phone: '', password: '' });
   const [error, setError] = useState('');
@@ -26,7 +28,27 @@ const Register = () => {
     try {
       const user = await register(form);
 
-      // Complete pending guest booking if any
+      // Step 1 – always verify before dashboard (email or WhatsApp OTP)
+      if (
+        user?.role !== 'admin' &&
+        (user?.needsWhatsappVerification || user?.whatsappVerified !== true)
+      ) {
+        // Ensure token is readable before verify page mounts (AuthContext setState is async)
+        const tok = localStorage.getItem('zumadash_token');
+        if (tok) {
+          api.defaults.headers.common['Authorization'] = `Bearer ${tok}`;
+        }
+        navigate('/verify-whatsapp', {
+          replace: true,
+          state: {
+            preferEmail: user?.otpChannel === 'email',
+            otpChannel: user?.otpChannel || 'whatsapp',
+            otpMessage: user?.otpMessage || '',
+          },
+        });
+        return;
+      }
+
       if (getPendingBooking()) {
         try {
           const job = await createJobFromPending(api, user, ensureCloudinaryUrl);
@@ -58,7 +80,7 @@ const Register = () => {
             <BrandLogo size={28} /> {platformName}</Link>
           <h2 style={{ marginTop: 16, fontSize: 22 }}>Create your account</h2>
           <p style={{ color: 'var(--gray-500)', fontSize: 14 }}>
-            {fromBooking ? 'Sign up to complete your booking' : 'Send packages across Dutse, Kubwa & Bwari'}
+            {fromBooking ? 'Sign up to complete your booking' : 'Send packages across Dutse, Kubwa, Bwari & Ushafa'}
           </p>
         </div>
 
@@ -97,7 +119,7 @@ const Register = () => {
         </form>
 
         <p className="text-center mt-4" style={{ fontSize: 14, color: 'var(--gray-500)' }}>
-          Already have an account?{' '}
+          {t('auth.hasAccount')}{' '}
           <Link to="/login" state={{ fromBooking }} style={{ color: 'var(--primary)', fontWeight: 600 }}>Login</Link>
         </p>
       </div>

@@ -14,6 +14,7 @@ const MerchantNavbar = () => {
   const mobileLinks = [
     { to: '/merchant', label: 'Dashboard' },
     { to: '/support', label: 'Support' },
+    { to: '/settings', label: 'Settings' },
     { to: '/profile', label: 'Profile' },
     { label: 'Logout', onClick: logout },
   ];
@@ -29,6 +30,7 @@ const MerchantNavbar = () => {
         <div className="hidden md:flex items-center gap-4 text-sm font-medium">
           <Link to="/merchant" className="text-white/90 hover:text-white">Dashboard</Link>
           <Link to="/support" className="text-white/90 hover:text-white">Support</Link>
+          <Link to="/settings" className="text-white/90 hover:text-white">Settings</Link>
           <Link to="/profile" className="text-white/90 hover:text-white">Profile</Link>
           <NotificationBell />
           <button type="button" onClick={logout} className="text-white/80 hover:text-white text-sm font-medium bg-transparent">
@@ -38,7 +40,7 @@ const MerchantNavbar = () => {
 
         <div className="flex md:hidden items-center gap-1">
           <NotificationBell />
-          <HamburgerButton open={menuOpen} onClick={() => setMenuOpen((o) => !o)} />
+<HamburgerButton open={menuOpen} onClick={() => setMenuOpen((o) => !o)} />
         </div>
       </div>
 

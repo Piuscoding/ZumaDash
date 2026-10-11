@@ -22,6 +22,12 @@ function resolveTile(tileUrl) {
   return tileUrl;
 }
 
+function geoToLatLng(geometry) {
+  const coords = geometry?.coordinates;
+  if (!coords || !Array.isArray(coords)) return [];
+  return coords.map(([lng, lat]) => [lat, lng]);
+}
+
 function FitBounds({ positions }) {
   const map = useMap();
   useEffect(() => {
@@ -67,15 +73,23 @@ function FollowRider({ riderLocation }) {
   return null;
 }
 
+/**
+ * Step 8 – map-mode legs:
+ * - routeGeometry / legB: pickup → drop-off (green)
+ * - activeLegGeometry / legA: rider → current target (blue dashed); updates as rider moves
+ * Text-mode callers should not pass geometries.
+ */
 const DeliveryMap = ({
   pickup,
   dropoff,
   routeGeometry,
+  activeLegGeometry,
   riderLocation,
   riderMarkerUrl,
   tileUrl,
   height = 280,
   className,
+  showLegB = true,
 }) => {
   const tile = resolveTile(tileUrl);
   const center = useMemo(() => {
@@ -85,19 +99,16 @@ const DeliveryMap = ({
     return [9.15, 7.4];
   }, [pickup, dropoff, riderLocation]);
 
-  const routePositions = useMemo(() => {
-    const coords = routeGeometry?.coordinates;
-    if (!coords || !Array.isArray(coords)) return [];
-    return coords.map(([lng, lat]) => [lat, lng]);
-  }, [routeGeometry]);
+  const legBPositions = useMemo(() => geoToLatLng(routeGeometry), [routeGeometry]);
+  const legAPositions = useMemo(() => geoToLatLng(activeLegGeometry), [activeLegGeometry]);
 
   const fitPositions = useMemo(() => {
-    const pts = [...routePositions];
+    const pts = [...legBPositions, ...legAPositions];
     if (pickup?.lat != null) pts.push([Number(pickup.lat), Number(pickup.lng)]);
     if (dropoff?.lat != null) pts.push([Number(dropoff.lat), Number(dropoff.lng)]);
     if (riderLocation?.lat != null) pts.push([Number(riderLocation.lat), Number(riderLocation.lng)]);
     return pts;
-  }, [routePositions, pickup, dropoff, riderLocation]);
+  }, [legBPositions, legAPositions, pickup, dropoff, riderLocation]);
 
   const riderIcon = useMemo(() => {
     if (riderMarkerUrl) {
@@ -108,7 +119,6 @@ const DeliveryMap = ({
         className: 'zumadash-rider-marker',
       });
     }
-    // Default: blue pulsing-style circle via divIcon
     return L.divIcon({
       className: '',
       html: `<div style="width:18px;height:18px;background:#2563eb;border:3px solid #fff;border-radius:50%;box-shadow:0 1px 6px rgba(0,0,0,.4)"></div>`,
@@ -156,14 +166,19 @@ const DeliveryMap = ({
             pathOptions={{ color: '#dc2626', fillColor: '#dc2626', fillOpacity: 1 }}
           />
         )}
-        {routePositions.length > 1 && (
-          <Polyline positions={routePositions} pathOptions={{ color: '#0f766e', weight: 4 }} />
+        {/* Leg B: pickup → drop-off */}
+        {showLegB && legBPositions.length > 1 && (
+          <Polyline positions={legBPositions} pathOptions={{ color: '#0f766e', weight: 5, opacity: 0.85 }} />
+        )}
+        {/* Leg A: rider → current target (updates live) */}
+        {legAPositions.length > 1 && (
+          <Polyline
+            positions={legAPositions}
+            pathOptions={{ color: '#2563eb', weight: 4, opacity: 0.95, dashArray: '10 8' }}
+          />
         )}
         {riderLocation?.lat != null && (
-          <Marker
-            position={[Number(riderLocation.lat), Number(riderLocation.lng)]}
-            icon={riderIcon}
-          />
+          <Marker position={[Number(riderLocation.lat), Number(riderLocation.lng)]} icon={riderIcon} />
         )}
       </MapContainer>
     </div>

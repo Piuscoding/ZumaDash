@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useI18n } from '../context/I18nContext';
 import { BrandLogo, useBranding } from '../context/BrandingContext';
 import NotificationBell from './NotificationBell';
 import HamburgerButton from './HamburgerButton';
 import MobileMenu from './MobileMenu';
 
 const RiderNavbar = () => {
+  const { t } = useI18n();
   const { logout } = useAuth();
   const { platformName } = useBranding();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -16,6 +18,7 @@ const RiderNavbar = () => {
     { to: '/rider/jobs', label: 'Available Jobs' },
     { to: '/rider/earnings', label: 'Earnings' },
     { to: '/rider/history', label: 'Job History' },
+    { to: '/settings', label: 'Settings' },
     { to: '/profile', label: 'Profile & Documents' },
     { to: '/support', label: 'Support' },
     { label: 'Logout', onClick: logout },
@@ -34,6 +37,7 @@ const RiderNavbar = () => {
           <Link to="/rider/earnings" className="text-white/90 hover:text-white">Earnings</Link>
           <Link to="/rider/history" className="text-white/90 hover:text-white">History</Link>
           <Link to="/support" className="text-white/90 hover:text-white">Support</Link>
+          <Link to="/settings" className="text-white/90 hover:text-white">Settings</Link>
           <Link to="/profile" className="text-white/90 hover:text-white">Profile</Link>
           <NotificationBell />
           <button type="button" onClick={logout} className="text-white/80 hover:text-white text-sm font-medium bg-transparent">
@@ -43,7 +47,7 @@ const RiderNavbar = () => {
 
         <div className="flex md:hidden items-center gap-1">
           <NotificationBell />
-          <HamburgerButton open={menuOpen} onClick={() => setMenuOpen((o) => !o)} />
+<HamburgerButton open={menuOpen} onClick={() => setMenuOpen((o) => !o)} />
         </div>
       </div>
 

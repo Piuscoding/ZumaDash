@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useI18n } from '../../context/I18nContext';
 import RoleNavbar from '../../components/RoleNavbar';
 import api from '../../services/api';
 import DeliveryMap from '../../components/map/DeliveryMap';
+import JobMediaGallery from '../../components/JobMediaGallery';
 import { joinJobRoom, leaveJobRoom } from '../../services/socket';
 import { uploadImage } from '../../services/upload';
 
@@ -18,6 +20,13 @@ const statusSteps = [
 ];
 
 const TrackDelivery = () => {
+  const { t } = useI18n();
+  const formatStatus = (s) => {
+    if (!s) return '';
+    const key = `status.${s}`;
+    const translated = t(key);
+    return translated === key ? String(s).replace(/_/g, ' ') : translated;
+  };
   const { id } = useParams();
   const { user } = useAuth();
   const [job, setJob] = useState(null);
@@ -30,6 +39,7 @@ const TrackDelivery = () => {
   const [lightbox, setLightbox] = useState(null);
   const [liveLoc, setLiveLoc] = useState(null);
   const [liveMeta, setLiveMeta] = useState(null); // remaining km/eta from stream
+  const [activeLegGeometry, setActiveLegGeometry] = useState(null); // Step 8 leg A
   const [mapFullscreen, setMapFullscreen] = useState(false);
   const [mapMeta, setMapMeta] = useState({ tileUrl: '', riderMarkerUrl: '' }); // { type: 'image'|'video', url }
   const [counterDraft, setCounterDraft] = useState({}); // offerId -> amount
@@ -79,6 +89,9 @@ const TrackDelivery = () => {
         updatedAt: job.riderLastLocation.updatedAt,
       });
     }
+    if (job.activeLegGeometry) {
+      setActiveLegGeometry(job.activeLegGeometry);
+    }
     const s = joinJobRoom(jobId);
     const onLoc = (payload) => {
       if (payload?.jobId && payload.jobId !== jobId) return;
@@ -90,6 +103,9 @@ const TrackDelivery = () => {
         remainingSec: payload.remainingSec,
         leg: payload.leg,
       });
+      if (payload.activeLegGeometry) {
+        setActiveLegGeometry(payload.activeLegGeometry);
+      }
     };
     s.on('rider_location', onLoc);
     return () => {
@@ -326,7 +342,8 @@ const TrackDelivery = () => {
               <DeliveryMap
                 pickup={job.pickup?.coordinates}
                 dropoff={job.dropoff?.coordinates}
-                routeGeometry={job.routeGeometry}
+                routeGeometry={job.locationMode === 'map' ? job.routeGeometry : null}
+                activeLegGeometry={job.locationMode === 'map' ? activeLegGeometry : null}
                 riderLocation={liveLoc || job.riderLastLocation}
                 riderMarkerUrl={mapMeta.riderMarkerUrl}
                 tileUrl={mapMeta.tileUrl}
@@ -436,55 +453,7 @@ const TrackDelivery = () => {
           </div>
         </div>
 
-        {/* NOW-13 / NOW-18 media */}
-        <div className="card" style={{ marginTop: 12 }}>
-          <h3 style={{ fontSize: 15, marginBottom: 10 }}>Media</h3>
-          {voiceUrl && (
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 12, color: 'var(--gray-500)', marginBottom: 6 }}>Voice note</div>
-              <audio controls src={voiceUrl} style={{ width: '100%' }} />
-            </div>
-          )}
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {collectMedia().map((m, i) =>
-              m.type === 'video' ? (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => openMedia(m.url, 'video')}
-                  style={{
-                    width: 88,
-                    height: 88,
-                    borderRadius: 8,
-                    border: '1px solid var(--gray-200)',
-                    background: '#111',
-                    color: '#fff',
-                    fontSize: 12,
-                    cursor: 'pointer',
-                  }}
-                >
-                  ▶ Video
-                </button>
-              ) : (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => openMedia(m.url, 'image')}
-                  style={{ padding: 0, border: 'none', background: 'none', cursor: 'pointer' }}
-                >
-                  <img
-                    src={m.url}
-                    alt={m.label}
-                    style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--gray-200)' }}
-                  />
-                </button>
-              )
-            )}
-            {collectMedia().length === 0 && !voiceUrl && (
-              <p style={{ fontSize: 13, color: 'var(--gray-500)' }}>No media yet</p>
-            )}
-          </div>
-        </div>
+                <JobMediaGallery job={job} title="All media" />
 
         {/* NOW-15 customer offers */}
         {isCustomer && job.status === 'pending_offers' && (
@@ -637,7 +606,8 @@ const TrackDelivery = () => {
           <DeliveryMap
             pickup={job.pickup?.coordinates}
             dropoff={job.dropoff?.coordinates}
-            routeGeometry={job.routeGeometry}
+            routeGeometry={job.locationMode === 'map' ? job.routeGeometry : null}
+            activeLegGeometry={job.locationMode === 'map' ? activeLegGeometry : null}
             riderLocation={liveLoc || job.riderLastLocation}
             riderMarkerUrl={mapMeta.riderMarkerUrl}
             tileUrl={mapMeta.tileUrl}

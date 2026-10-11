@@ -4,10 +4,12 @@ import { useAuth } from '../context/AuthContext';
 import { BrandLogo, useBranding } from '../context/BrandingContext';
 import HamburgerButton from './HamburgerButton';
 import MobileMenu from './MobileMenu';
+import { useI18n } from '../context/I18nContext';
 
 const PublicNavbar = () => {
   const { isAuthenticated, user } = useAuth();
   const { platformName } = useBranding();
+  const { t } = useI18n();
   const [menuOpen, setMenuOpen] = useState(false);
 
   const dashboardLink = () => {
@@ -18,16 +20,16 @@ const PublicNavbar = () => {
   };
 
   const mobileLinks = [
-    { to: '/how-it-works', label: 'How it works' },
-    { to: '/for-riders', label: 'For Riders' },
-    { to: '/pricing', label: 'Pricing' },
+    { to: '/how-it-works', label: t('nav.howItWorks') },
+    { to: '/for-riders', label: t('nav.forRiders') },
+    { to: '/pricing', label: t('nav.pricing') },
     { to: '/terms-customers', label: 'Terms' },
     ...(isAuthenticated
-      ? [{ to: dashboardLink(), label: 'Dashboard' }]
+      ? [{ to: dashboardLink(), label: t('nav.dashboard') }]
       : [
-          { to: '/login', label: 'Login' },
-          { to: '/register', label: 'Sign Up' },
-          { to: '/become-a-rider', label: 'Become a Rider' },
+          { to: '/login', label: t('nav.login') },
+          { to: '/register', label: t('nav.register') },
+          { to: '/become-a-rider', label: t('landing.ctaRider') },
         ]),
   ];
 
@@ -40,18 +42,18 @@ const PublicNavbar = () => {
         </Link>
 
         <div className="hidden md:flex items-center gap-5 text-sm font-medium">
-          <Link to="/how-it-works" className="text-white/90 hover:text-white">How it works</Link>
-          <Link to="/for-riders" className="text-white/90 hover:text-white">For Riders</Link>
-          <Link to="/pricing" className="text-white/90 hover:text-white">Pricing</Link>
-          {isAuthenticated ? (
+          <Link to="/how-it-works" className="text-white/90 hover:text-white">{t('nav.howItWorks')}</Link>
+          <Link to="/for-riders" className="text-white/90 hover:text-white">{t('nav.forRiders')}</Link>
+          <Link to="/pricing" className="text-white/90 hover:text-white">{t('nav.pricing')}</Link>
+{isAuthenticated ? (
             <Link to={dashboardLink()} className="rounded-lg bg-white text-primary px-4 py-2 font-semibold hover:bg-primary-light">
-              Dashboard
+              {t('nav.dashboard')}
             </Link>
           ) : (
             <>
-              <Link to="/login" className="text-white/90 hover:text-white">Login</Link>
+              <Link to="/login" className="text-white/90 hover:text-white">{t('nav.login')}</Link>
               <Link to="/register" className="rounded-lg bg-white text-primary px-4 py-2 font-semibold hover:bg-primary-light">
-                Sign Up
+                {t('nav.register')}
               </Link>
             </>
           )}

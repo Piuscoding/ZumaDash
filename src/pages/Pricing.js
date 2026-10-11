@@ -15,7 +15,7 @@ const bands = [
   },
   {
     zone: 'Neighbouring',
-    desc: 'Adjacent areas (e.g. Kubwa ↔ Bwari, Kubwa ↔ Dutse)',
+    desc: 'Adjacent areas (e.g. Kubwa ↔ Bwari, Kubwa ↔ Dutse, Bwari ↔ Ushafa)',
     prices: [
       { size: 'Small', price: '₦2,000+' },
       { size: 'Medium', price: '₦2,800+' },
@@ -24,7 +24,7 @@ const bands = [
   },
   {
     zone: 'Cross zone',
-    desc: 'Across the full corridor (e.g. Dutse ↔ Bwari via Kubwa)',
+    desc: 'Across the full corridor (e.g. Dutse ↔ Bwari via Kubwa, or Ushafa ↔ Kubwa)',
     prices: [
       { size: 'Small', price: '₦3,000+' },
       { size: 'Medium', price: '₦4,000+' },
@@ -40,11 +40,11 @@ const Pricing = () => (
     <div className="container" style={{ padding: '48px 16px', maxWidth: 900 }}>
       <h1 style={{ fontSize: 32, fontWeight: 800, marginBottom: 12 }}>Pricing & Areas</h1>
       <p style={{ color: 'var(--gray-500)', marginBottom: 16, fontSize: 16, maxWidth: 600 }}>
-        We only operate in <strong>Dutse, Kubwa and Bwari</strong>. Prices below are suggestions — you and the rider can bargain to a final agreed amount.
+        We only operate in <strong>Dutse, Kubwa, Bwari and Ushafa</strong>. Prices below are suggestions — you and the rider can bargain to a final agreed amount.
       </p>
 
       <div style={{ background: 'var(--primary-light)', borderRadius: 12, padding: 16, marginBottom: 36, fontSize: 14 }}>
-        <strong>Service area:</strong> Dutse • Kubwa • Bwari (Abuja). We do not take jobs outside this corridor.
+        <strong>Service area:</strong> Dutse · Kubwa · Bwari · Ushafa (Abuja). We do not take jobs outside this corridor.
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 20, marginBottom: 40 }}>

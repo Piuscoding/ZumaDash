@@ -205,6 +205,7 @@ const Profile = () => {
                     <option value="dutse">Dutse</option>
                     <option value="kubwa">Kubwa</option>
                     <option value="bwari">Bwari</option>
+                    <option value="ushafa">Ushafa</option>
                   </select>
                 </div>
                 <button type="submit" className="btn btn-primary btn-block">Save address</button>
