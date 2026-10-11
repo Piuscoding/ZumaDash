@@ -16,8 +16,8 @@ L.Icon.Default.mergeOptions({
 const OSM_TILE = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
 
 function resolveTile(tileUrl) {
-  if (!tileUrl || String(tileUrl).includes('cartocdn') || String(tileUrl).includes('apikey')) {
-    return OSM_TILE;
+  if (!tileUrl || String(tileUrl).includes('cartocdn') || String(tileUrl).includes('apikey') || String(tileUrl).includes('mapbox')) {
+    return 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
   }
   return tileUrl;
 }

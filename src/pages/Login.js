@@ -39,7 +39,14 @@ const Login = () => {
       }
 
       if (user.needsWhatsappVerification || user.whatsappVerified === false) {
-        navigate('/verify-whatsapp', { replace: true });
+        navigate('/verify-whatsapp', {
+          replace: true,
+          state: {
+            otpChannel: user.otpChannel || (/email/i.test(user.message || user.loginMessage || '') ? 'email' : 'whatsapp'),
+            preferEmail: (user.otpChannel === 'email') || /email/i.test(user.message || user.loginMessage || ''),
+            otpMessage: user.message || user.loginMessage || '',
+          },
+        });
         return;
       }
 
@@ -60,9 +67,17 @@ const Login = () => {
       }
 
       if (user.role === 'rider') navigate('/rider');
-      else if (user.role === 'admin' || user.role === 'manager') navigate('/admin');
-      else if (user.role === 'merchant') navigate('/merchant');
-      else navigate(location.state?.from || '/dashboard');
+      else {
+        const pending =
+          (user.role === 'rider' || user.role === 'merchant') &&
+          user.verificationStatus &&
+          user.verificationStatus !== 'approved';
+        const appRole = pending ? 'customer' : user.role;
+        if (appRole === 'admin' || appRole === 'manager' || user.role === 'admin' || user.role === 'manager') navigate('/admin');
+        else if (appRole === 'merchant') navigate('/merchant');
+        else if (appRole === 'rider') navigate('/rider');
+        else navigate(location.state?.from || '/dashboard');
+      }
     } catch (err) {
       const data = err.response?.data;
       if (data?.code === 'LOGIN_LOCKED' || err.response?.status === 429) {

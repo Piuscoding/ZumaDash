@@ -65,6 +65,7 @@ const BookDelivery = ({ adminMode = false } = {}) => {
   const [suggestions, setSuggestions] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState('');
+  const [mapTileUrl, setMapTileUrl] = useState('');
   const [flyTarget, setFlyTarget] = useState(null);
   const searchTimer = useRef(null);
   const [savedAddresses, setSavedAddresses] = useState([]);
@@ -181,7 +182,13 @@ const BookDelivery = ({ adminMode = false } = {}) => {
     } catch (_) {}
   };
 
-  // Live search suggestions (Nominatim via backend)
+  useEffect(() => {
+    api.get('/api/map/tile-config').then((r) => {
+      if (r.data?.tileUrl) setMapTileUrl(r.data.tileUrl);
+    }).catch(() => {});
+  }, []);
+
+  // Live search suggestions (Mapbox primary via backend, Nominatim fallback)
   const runSearch = async (q) => {
     const query = String(q || '').trim();
     if (query.length < 2) {
@@ -716,7 +723,7 @@ const BookDelivery = ({ adminMode = false } = {}) => {
                     activeField={activeField}
                     onPick={onMapPick}
                     flyTarget={flyTarget}
-                    tileUrl={mapConfig.mapTileUrl}
+                    tileUrl={mapTileUrl}
                     height={260}
                     label="Map — tap to place pin for the active field"
                   />

@@ -18,13 +18,14 @@ const VerifyWhatsApp = () => {
   const [secondsLeft, setSecondsLeft] = useState(OTP_SECONDS);
   // Active channel that last received the OTP (drives title + countdown)
   const [channelHint, setChannelHint] = useState(
-    location.state?.preferEmail || location.state?.otpChannel === 'email' ? 'email' : 'whatsapp'
+    location.state?.preferEmail || location.state?.otpChannel === 'email' || sessionStorage.getItem('zumadash_otp_channel') === 'email' ? 'email' : 'whatsapp'
   );
   const inputs = useRef([]);
 
   useEffect(() => {
     if (location.state?.preferEmail || location.state?.otpChannel === 'email') {
       setChannelHint('email');
+      try { sessionStorage.setItem('zumadash_otp_channel', 'email'); } catch (_) {}
     }
     if (location.state?.otpMessage) {
       setInfo(location.state.otpMessage);
@@ -130,6 +131,7 @@ const VerifyWhatsApp = () => {
       const res = await api.post('/api/auth/otp/send', { channel });
       const used = res.data.channel || channel;
       setChannelHint(used === 'email' ? 'email' : 'whatsapp');
+      try { sessionStorage.setItem('zumadash_otp_channel', used === 'email' ? 'email' : 'whatsapp'); } catch (_) {}
       setInfo(
         res.data.message ||
           (used === 'email' ? 'Code sent to your email' : 'Code sent to your WhatsApp')

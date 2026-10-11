@@ -1,3 +1,16 @@
+
+/** Pending rider/merchant applicants keep customer UX until admin approves */
+export function effectiveAppRole(user) {
+  if (!user) return null;
+  if (user.role === 'admin' || user.role === 'manager') return user.role;
+  if (user.role === 'rider' || user.role === 'merchant') {
+    if (user.verificationStatus && user.verificationStatus !== 'approved') {
+      return 'customer';
+    }
+  }
+  return user.role;
+}
+
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
@@ -53,10 +66,12 @@ const PrivateRoute = ({ children, roles }) => {
   if (user?.role !== 'admin' && user?.role !== 'manager' && !channelVerified) {
     return <Navigate to="/verify-whatsapp" replace />;
   }
-  if (roles && !roles.includes(user.role)) {
-    if (user.role === 'rider') return <Navigate to="/rider" />;
-    if (user.role === 'admin' || user.role === 'manager') return <Navigate to="/admin" />;
-    if (user.role === 'merchant') return <Navigate to="/merchant" />;
+  const appRole = effectiveAppRole(user);
+  // Pending rider/merchant applicants use customer routes until approved
+  if (roles && !roles.includes(appRole) && !(roles.includes('customer') && appRole === 'customer')) {
+    if (appRole === 'rider') return <Navigate to="/rider" />;
+    if (appRole === 'admin' || appRole === 'manager') return <Navigate to="/admin" />;
+    if (appRole === 'merchant') return <Navigate to="/merchant" />;
     return <Navigate to="/dashboard" />;
   }
   return children;

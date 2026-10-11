@@ -89,6 +89,8 @@ export const AuthProvider = ({ children }) => {
       ...userData,
       needsWhatsappVerification: !!res.data.needsWhatsappVerification,
       needsDeviceOtp: false,
+      otpChannel: res.data.otpChannel || null,
+      message: res.data.message || null,
     };
   };
 

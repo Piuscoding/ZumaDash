@@ -375,6 +375,28 @@ const AdminDashboard = () => {
       fetchData();
     } catch (err) { setMessage(err.response?.data?.message || 'Failed'); }
   };
+  
+  const cancelJobAdmin = async (id) => {
+    const reason = window.prompt('Cancel reason (e.g. outside service corridor)') || 'Cancelled by admin';
+    try {
+      await api.put(`/api/admin/jobs/${id}/cancel`, { reason });
+      setMessage('Job cancelled');
+      load();
+    } catch (e) {
+      setMessage(e.response?.data?.message || 'Cancel failed');
+    }
+  };
+
+  const purgeDataCategory = async (category) => {
+    if (!window.confirm(`Delete ALL data in category "${category}"? This cannot be undone.`)) return;
+    try {
+      const res = await api.delete('/api/admin/data-category', { data: { category } });
+      setMessage(res.data.message || 'Category cleared');
+    } catch (e) {
+      setMessage(e.response?.data?.message || 'Purge failed');
+    }
+  };
+
   const markWithdrawPaid = async (id) => {
     const ref = window.prompt('Payment reference (optional):') || '';
     try {
@@ -699,13 +721,18 @@ const AdminDashboard = () => {
                           <video src={b.videoUrl} controls style={{ width: '100%', maxHeight: 220, marginTop: 8, borderRadius: 8 }} />
                         )}
                         <div style={{ marginTop: 8, fontSize: 12 }}>
-                          {(b.documentUrls || (b.papersUrl ? [b.papersUrl] : [])).map((u) => (
-                            <div key={u}>
-                              {canDownloadDocs ? (
-                                <a href={u} target="_blank" rel="noreferrer" download>Document</a>
-                              ) : (
-                                <span style={{ fontSize: 12, color: 'var(--gray-500)' }} title="Managers cannot download documents">Document (preview only — no download)</span>
-                              )}
+                          <strong>Bike documents (PDF / files)</strong>
+                          {(b.documentUrls || (b.papersUrl ? [b.papersUrl] : [])).length === 0 && (
+                            <div style={{ color: 'var(--gray-500)' }}>No documents uploaded</div>
+                          )}
+                          {(b.documentUrls || (b.papersUrl ? [b.papersUrl] : [])).map((u, di) => (
+                            <div key={u} style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 6, alignItems: 'center' }}>
+                              <a href={u} target="_blank" rel="noreferrer" className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }}>
+                                Open file {di + 1}
+                              </a>
+                              <a href={u} target="_blank" rel="noreferrer" download style={{ fontWeight: 600, fontSize: 12 }}>
+                                Download
+                              </a>
                             </div>
                           ))}
                         </div>
@@ -782,11 +809,39 @@ const AdminDashboard = () => {
                     </div>
                     <h4 style={{ fontSize: 14 }}>Applied bikes</h4>
                     {(merchantDetail.merchant?.fleetApplication?.bikes || merchantDetail.merchant?.bikeDetails || []).map((b, i) => (
-                      <div key={i} style={{ fontSize: 13, marginBottom: 8 }}>
-                        {b.label || b.plateNumber} · {b.plateNumber}
-                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
-                          {(b.photoUrls || []).map((u) => (
-                            <a key={u} href={u} target="_blank" rel="noreferrer"><img src={u} alt="" style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 6 }} /></a>
+                      <div key={i} style={{ fontSize: 13, marginBottom: 12, paddingBottom: 10, borderBottom: '1px solid var(--gray-100)' }}>
+                        <strong>{b.label || b.plateNumber || `Bike ${i + 1}`}</strong> · {b.plateNumber} · {b.model || ''} · {b.color || ''}
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+                          {(b.photoUrls || (b.photoUrl ? [b.photoUrl] : [])).map((u) => (
+                            <a key={u} href={u} target="_blank" rel="noreferrer"><img src={u} alt="" style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 6 }} /></a>
+                          ))}
+                        </div>
+                        {b.videoUrl && (
+                          <video src={b.videoUrl} controls style={{ width: '100%', maxHeight: 180, marginTop: 8, borderRadius: 8 }} />
+                        )}
+                        <div style={{ marginTop: 8 }}>
+                          <strong style={{ fontSize: 12 }}>Documents / PDF</strong>
+                          {(b.documentUrls || (b.papersUrl ? [b.papersUrl] : [])).length === 0 && (
+                            <div style={{ color: 'var(--gray-500)', fontSize: 12 }}>No documents</div>
+                          )}
+                          {(b.documentUrls || (b.papersUrl ? [b.papersUrl] : [])).map((u, di) => (
+                            <div key={u} style={{ display: 'flex', gap: 10, marginTop: 4, alignItems: 'center' }}>
+                              <a href={u} target="_blank" rel="noreferrer" className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: 11 }}>Open file {di + 1}</a>
+                              {isAdmin && (
+                                <a href={u} download target="_blank" rel="noreferrer" style={{ fontSize: 12, fontWeight: 600 }}>Download</a>
+                              )}
+                              {isAdmin && (
+                                <button type="button" className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: 11 }} onClick={async () => {
+                                  try {
+                                    await api.delete('/api/admin/media', { data: { riderId: merchantDetail.merchant._id, field: 'bikeDocument', bikeIndex: i, url: u } });
+                                    setMessage('Document removed');
+                                    openMerchant(merchantDetail.merchant._id);
+                                  } catch (e) {
+                                    setMessage(e.response?.data?.message || 'Delete failed');
+                                  }
+                                }}>Delete</button>
+                              )}
+                            </div>
                           ))}
                         </div>
                       </div>
@@ -827,6 +882,20 @@ const AdminDashboard = () => {
 
             {tab === 'jobs' && (
               <div>
+                {isAdmin && (
+                <div className="card" style={{ padding: 12, marginBottom: 12 }}>
+                  <strong style={{ fontSize: 13 }}>Data tools (admin only)</strong>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                    <button type="button" className="btn btn-secondary" style={{ fontSize: 12, padding: '6px 10px' }} onClick={() => purgeDataCategory('kyc_docs')}>Clear all KYC media</button>
+                    <button type="button" className="btn btn-secondary" style={{ fontSize: 12, padding: '6px 10px' }} onClick={() => purgeDataCategory('bike_docs')}>Clear all bike documents</button>
+                    <button type="button" className="btn btn-secondary" style={{ fontSize: 12, padding: '6px 10px' }} onClick={() => purgeDataCategory('job_media')}>Clear all job media</button>
+                    <button type="button" className="btn btn-secondary" style={{ fontSize: 12, padding: '6px 10px' }} onClick={() => purgeDataCategory('withdrawals')}>Clear all withdraw records</button>
+                    <button type="button" className="btn btn-secondary" style={{ fontSize: 12, padding: '6px 10px' }} onClick={() => purgeDataCategory('notifications')}>Clear all notifications</button>
+                  </div>
+                  <p style={{ fontSize: 11, color: 'var(--gray-500)', marginTop: 8, marginBottom: 0 }}>Managers cannot use these tools. Cancel job works for corridor / any active job.</p>
+                </div>
+                )}
+
                 {jobs.slice(0, 40).map((j) => (
                   <div key={j._id} className="card" style={{ padding: 12, marginBottom: 8 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}><strong>{j.jobId}</strong><span className="badge badge-info">{j.status}</span></div>
@@ -972,6 +1041,9 @@ const AdminDashboard = () => {
                             </div>
                             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-start' }}>
                               <button className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: 12 }} onClick={() => openJobTimeline(j._id)}>Timeline</button>
+                      {!['completed','cancelled'].includes(j.status) && (
+                        <button type="button" className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => cancelJobAdmin(j._id)}>Cancel job</button>
+                      )}
                               <button className="btn btn-primary" style={{ padding: '8px 12px', fontSize: 12 }} onClick={() => approveClearance(j._id)}>Approve clearance</button>
                               <button className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: 12 }} onClick={() => rejectClearance(j._id)}>Reject</button>
                             </div>
