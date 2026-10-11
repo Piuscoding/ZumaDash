@@ -5,6 +5,7 @@ import AdminNavbar from '../../components/AdminNavbar';
 import CustomerNavbar from '../../components/CustomerNavbar';
 import api from '../../services/api';
 import MapPicker from '../../components/map/MapPicker';
+import { ensureLocationForMap } from '../../utils/geo';
 import { useAuth } from '../../context/AuthContext';
 import { useI18n } from '../../context/I18nContext';
 import { savePendingBooking, getPendingBooking } from '../../utils/pendingBooking';
@@ -602,7 +603,17 @@ const BookDelivery = ({ adminMode = false } = {}) => {
                       border: '1.5px solid var(--primary)',
                       fontWeight: 700,
                     }}
-                    onClick={() => setBookingMode('map')}
+                    onClick={async () => {
+                      try {
+                        setSearchError('');
+                        await ensureLocationForMap('map booking');
+                        setBookingMode('map');
+                      } catch (e) {
+                        setBookingMode('text');
+                        setSearchError(e.message || 'Location required for map mode. Switched to text mode.');
+                        alert(e.message || 'Enable device location to use map mode.');
+                      }
+                    }}
                   >
                     Map mode
                   </button>

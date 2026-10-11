@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import RiderNavbar from '../../components/RiderNavbar';
 import api from '../../services/api';
+import { ensureLocationForMap } from '../../utils/geo';
 
 const AvailableJobs = () => {
   const [jobs, setJobs] = useState([]);
@@ -29,18 +30,24 @@ const AvailableJobs = () => {
   }, []);
 
   const handleOffer = async (jobId, suggested) => {
-    const amount = offerAmount[jobId] || suggested;
     setSubmitting(jobId);
     setMessage('');
     try {
-      await api.post(`/api/jobs/${jobId}/offer`, {
+      const job = jobs.find((j) => j._id === jobId);
+      let coords = null;
+      if (job?.locationMode === 'map') {
+        coords = await ensureLocationForMap('offering on map jobs');
+      }
+      const amount = offerAmount[jobId] || suggested;
+      const res = await api.post(`/api/jobs/${jobId}/offer`, {
         amount: Number(amount),
         message: offerNote[jobId] || '',
+        ...(coords ? { lat: coords.lat, lng: coords.lng } : {}),
       });
-      setMessage('Offer submitted successfully!');
+      setMessage(res.data.message || 'Offer submitted');
       fetchJobs();
     } catch (err) {
-      setMessage(err.response?.data?.message || 'Failed to submit offer');
+      setMessage(err.response?.data?.message || err.message || 'Failed to submit offer');
     } finally {
       setSubmitting(null);
     }
@@ -50,14 +57,17 @@ const AvailableJobs = () => {
     setSubmitting(jobId);
     setMessage('');
     try {
-      const res = await api.post(`/api/jobs/${jobId}/accept-price`);
+      const job = jobs.find((j) => j._id === jobId);
+      let coords = null;
+      if (job?.locationMode === 'map') {
+        coords = await ensureLocationForMap('accepting map jobs');
+      }
+      const body = coords ? { lat: coords.lat, lng: coords.lng } : {};
+      const res = await api.post(`/api/jobs/${jobId}/accept-price`, body);
       setMessage(res.data.message || 'Job accepted!');
       fetchJobs();
-      if (res.data.job?._id) {
-        // optional: could navigate to track
-      }
     } catch (err) {
-      setMessage(err.response?.data?.message || 'Failed to accept job');
+      setMessage(err.response?.data?.message || err.message || 'Failed to accept job');
     } finally {
       setSubmitting(null);
     }
@@ -66,10 +76,14 @@ const AvailableJobs = () => {
   const openDetail = async (jobId) => {
     setDetailId(jobId);
     try {
+      const job = jobs.find((j) => j._id === jobId);
+      if (job?.locationMode === 'map') {
+        await ensureLocationForMap('viewing map jobs');
+      }
       const res = await api.get(`/api/jobs/${jobId}`);
       setDetail(res.data.job || res.data);
     } catch (err) {
-      setDetail({ error: err.response?.data?.message || 'Could not load details' });
+      setDetail({ error: err.response?.data?.message || err.message || 'Could not load details' });
     }
   };
 
@@ -108,6 +122,9 @@ const AvailableJobs = () => {
             {jobs.map((job) => (
               <div key={job._id} className="card">
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
+                  {job.locationMode === 'map' && (
+                    <span className="badge" style={{ background: '#dbeafe', color: '#1d4ed8' }}>Map job · location required</span>
+                  )}
                   <span className="badge badge-warning">{job.packageSize || 'Package'}</span>
                   <button
                     type="button"

@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useI18n } from '../../context/I18nContext';
 import RoleNavbar from '../../components/RoleNavbar';
 import api from '../../services/api';
+import { ensureLocationForMap } from '../../utils/geo';
 import DeliveryMap from '../../components/map/DeliveryMap';
 import JobMediaGallery from '../../components/JobMediaGallery';
 import { joinJobRoom, leaveJobRoom } from '../../services/socket';
@@ -78,7 +79,8 @@ const TrackDelivery = () => {
     const hasCoords = job.pickup?.coordinates?.lat && job.dropoff?.coordinates?.lat;
     if (job.locationMode !== 'map' && !hasCoords) return undefined;
     // Stream while on the way; stop after delivered / clearance / done / cancelled
-    if (!['accepted', 'live', 'picked'].includes(job.status)) {
+    // Stream rider marker/route from LIVE until delivered (picked still in progress)
+    if (!['live', 'picked'].includes(job.status)) {
       return undefined;
     }
     const jobId = job.jobId;
@@ -122,30 +124,39 @@ const TrackDelivery = () => {
     if (!iAmRider) return undefined;
     const hasCoords = job.pickup?.coordinates?.lat && job.dropoff?.coordinates?.lat;
     if (job.locationMode !== 'map' && !hasCoords) return undefined;
-    if (!['accepted', 'live', 'picked'].includes(job.status)) return undefined;
+    if (!['live', 'picked'].includes(job.status)) return undefined;
     if (!navigator.geolocation) {
       console.warn('Geolocation not available');
+      setMessage((m) => m || 'Enable location to share your position on the map.');
       return undefined;
     }
-    const push = () => {
-      navigator.geolocation.getCurrentPosition(
-        async (pos) => {
-          try {
-            await api.post(`/api/jobs/${job._id}/location`, {
-              lat: pos.coords.latitude,
-              lng: pos.coords.longitude,
-            });
-          } catch (e) {
-            console.warn('location push failed', e?.response?.data || e.message);
-          }
-        },
-        (err) => console.warn('geolocation error', err.message),
-        { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 }
-      );
+    let watchId = null;
+    const pushCoords = async (lat, lng) => {
+      try {
+        await api.post(`/api/jobs/${job._id}/location`, { lat, lng });
+      } catch (e) {
+        console.warn('location push failed', e?.response?.data || e.message);
+      }
     };
-    push();
-    const id = setInterval(push, 4000);
-    return () => clearInterval(id);
+    // Continuous watch for smoother marker movement + 4s backup interval
+    watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        pushCoords(pos.coords.latitude, pos.coords.longitude);
+      },
+      (err) => console.warn('geolocation error', err.message),
+      { enableHighAccuracy: true, maximumAge: 2000, timeout: 15000 }
+    );
+    const id = setInterval(() => {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => pushCoords(pos.coords.latitude, pos.coords.longitude),
+        () => {},
+        { enableHighAccuracy: true, maximumAge: 2000, timeout: 10000 }
+      );
+    }, 4000);
+    return () => {
+      clearInterval(id);
+      if (watchId != null) navigator.geolocation.clearWatch(watchId);
+    };
   }, [job?._id, job?.status, job?.locationMode, job?.rider, user]);
 
 
@@ -160,6 +171,19 @@ const TrackDelivery = () => {
     setActionLoading(true);
     setMessage('');
     try {
+      // Map jobs: must have GPS on before LIVE (and keep sharing while live/picked)
+      if (
+        status === 'live' &&
+        (job.locationMode === 'map' || (job.pickup?.coordinates?.lat && job.dropoff?.coordinates?.lat))
+      ) {
+        try {
+          await ensureLocationForMap('going LIVE on a map job');
+        } catch (geoErr) {
+          setMessage(geoErr.message || 'Enable device location to go LIVE on map jobs.');
+          setActionLoading(false);
+          return;
+        }
+      }
       let photoUrl = null;
       if (['live', 'picked', 'delivered', 'pending_clearance'].includes(status)) {
         if (!proofFile) {
