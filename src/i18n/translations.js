@@ -72,6 +72,36 @@ const en = {
     submit: 'Request delivery',
     corridorOnly: 'Dutse · Kubwa · Bwari · Ushafa only',
   },
+
+  admin: {
+    adminLabel: 'Admin',
+    createCustomer: 'Register customer',
+    createCustomerHelp: 'Create an account for a customer who cannot self-register.',
+    customerCreated: 'Customer account created',
+    bookForCustomer: 'Book for customer',
+    bookForCustomerHelp: 'Place a delivery on behalf of a selected customer (same fields as the customer booking form).',
+    selectCustomer: 'Select customer',
+    selectUser: 'Select user',
+    jobCreated: 'Job created for customer',
+    applyForUser: 'Rider / merchant application',
+    applyForUserHelp: 'File an individual rider or fleet merchant application for a user who is not tech-savvy.',
+    applicantType: 'Application type',
+    individualRider: 'Individual rider',
+    fleetMerchant: 'Fleet / merchant',
+    ninPhoto: 'NIN document photo',
+    selfie: 'Applicant selfie',
+    guarantorName: 'Guarantor name',
+    guarantorPhone: 'Guarantor phone',
+    guarantorAddress: 'Guarantor address',
+    bikePlate: 'Bike plate number',
+    bikeModel: 'Bike model',
+    bikeColor: 'Bike color',
+    bikeDocs: 'Bike documents (PDF / DOC only)',
+    submitApplication: 'Submit application',
+    applicationFiled: 'Application filed',
+    publicSite: 'Public site',
+  },
+
   status: {
     pending_payment_approval: 'Pending payment approval',
     pending_offers: 'Waiting for offers',
@@ -439,24 +469,24 @@ export function getDict(lang) {
 }
 
 export function translate(lang, key, vars = {}) {
-  const dict = getDict(lang);
   const parts = String(key).split('.');
-  let cur = dict;
-  for (const p of parts) {
-    if (cur && typeof cur === 'object' && p in cur) cur = cur[p];
-    else {
-      cur = dictionaries.en;
-      for (const q of parts) {
-        if (cur && typeof cur === 'object' && q in cur) cur = cur[q];
-        else return key;
-      }
-      break;
+  const resolve = (dict) => {
+    let cur = dict;
+    for (const p of parts) {
+      if (cur == null || typeof cur !== 'object' || !(p in cur)) return null;
+      cur = cur[p];
     }
-  }
-  let str = typeof cur === 'string' ? cur : key;
-  Object.keys(vars).forEach((k) => {
+    return typeof cur === 'string' ? cur : null;
+  };
+  let str = resolve(getDict(lang));
+  if (str == null && lang !== 'en') str = resolve(getDict('en'));
+  if (str == null) str = key;
+  // Never translate brand name away if it appears as full string
+  if (str === 'ZumaDash') return 'ZumaDash';
+  Object.keys(vars || {}).forEach((k) => {
     str = str.replace(new RegExp(`\\{${k}\\}`, 'g'), String(vars[k]));
   });
+  // Keep ZumaDash brand intact even if embedded
   return str;
 }
 

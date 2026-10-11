@@ -11,7 +11,7 @@ import ManagersDesk from './ManagersDesk';
 import { BarChart, HorizontalBars, ChangeBadge } from '../../components/admin/KpiCharts';
 import JobMediaGallery from '../../components/JobMediaGallery';
 
-const TABS = ['overview', 'payment', 'riders', 'merchants', 'customers', 'kyc', 'security', 'managers', 'jobs', 'disputes', 'finance', 'notify', 'email', 'reports', 'settings'];
+const TABS = ['overview', 'payment', 'riders', 'merchants', 'customers', 'kyc', 'security', 'managers', 'jobs', 'disputes', 'finance', 'withdrawals', 'notify', 'email', 'reports', 'settings'];
 
 const AdminDashboard = () => {
   const { user, logout } = useAuth();
@@ -220,7 +220,7 @@ const AdminDashboard = () => {
 
   useEffect(() => { fetchData(); }, []);
   useEffect(() => { if (tab === 'reports') loadReport(reportDays, reportSegment); }, [tab, reportDays, reportSegment]);
-  useEffect(() => { if (tab === 'finance') loadFinance(financeDays); }, [tab, financeDays]);
+  useEffect(() => { if (tab === 'finance' || tab === 'withdrawals') loadFinance(financeDays); }, [tab, financeDays]);
 
   useEffect(() => {
     api.get('/api/admin/me/permissions')
@@ -1202,8 +1202,19 @@ const AdminDashboard = () => {
               </div>
             )}
 
-            
-                <h3 style={{ fontSize: 16, margin: '20px 0 10px' }}>Withdraw history (period)</h3>
+
+            {tab === 'withdrawals' && (
+              <div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16, alignItems: 'center' }}>
+                  <select value={financeDays} onChange={(e) => setFinanceDays(Number(e.target.value))}>
+                    <option value={7}>Last 7 days</option>
+                    <option value={14}>Last 14 days</option>
+                    <option value={30}>Last 30 days</option>
+                    <option value={90}>Last 90 days</option>
+                  </select>
+                  <button type="button" className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: 13 }} onClick={() => loadFinance()}>Refresh</button>
+                </div>
+                <h3 style={{ fontSize: 16, margin: '0 0 10px' }}>Withdrawals / withdraw history</h3>
                 {(finance.withdrawHistory || []).length === 0 ? (
                   <p style={{ color: 'var(--gray-500)', fontSize: 13 }}>No withdraw requests in this period</p>
                 ) : (
@@ -1219,8 +1230,8 @@ const AdminDashboard = () => {
                         </tr>
                       </thead>
                       <tbody>
-                        {finance.withdrawHistory.map((w) => (
-                          <tr key={w.id} style={{ borderBottom: '1px solid var(--gray-100)' }}>
+                        {(finance.withdrawHistory || []).map((w) => (
+                          <tr key={w.id || w._id} style={{ borderBottom: '1px solid var(--gray-100)' }}>
                             <td style={{ padding: 10 }}>{w.createdAt ? new Date(w.createdAt).toLocaleString() : '—'}</td>
                             <td style={{ padding: 10 }}>{w.rider?.name || '—'}<div style={{ fontSize: 11, color: 'var(--gray-500)' }}>{w.rider?.phone}</div></td>
                             <td style={{ padding: 10, fontWeight: 700 }}>₦{(w.amount || 0).toLocaleString()}</td>
@@ -1232,6 +1243,8 @@ const AdminDashboard = () => {
                     </table>
                   </div>
                 )}
+              </div>
+            )}
 
 {tab === 'notify' && (
               <div className="card" style={{ maxWidth: 520 }}>

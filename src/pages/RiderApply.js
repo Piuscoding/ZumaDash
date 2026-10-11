@@ -1,3 +1,4 @@
+import AdminNavbar from '../components/AdminNavbar';
 import { useBranding } from '../context/BrandingContext';
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -15,9 +16,21 @@ const emptyBike = () => ({
   videoUrl: '',
 });
 
-const RiderApply = () => {
+const RiderApply = ({ adminMode = false } = {}) => {
   const { platformName } = useBranding();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
+  const [customers, setCustomers] = useState([]);
+  const [selectedUserId, setSelectedUserId] = useState('');
+
+  useEffect(() => {
+    if (!adminMode) return undefined;
+    (async () => {
+      try {
+        const res = await api.get('/api/admin/customers');
+        setCustomers(res.data.customers || []);
+      } catch (_) {}
+    })();
+  }, [adminMode]);
   const navigate = useNavigate();
   const [form, setForm] = useState({
     riderType: 'individual',
@@ -143,7 +156,7 @@ const RiderApply = () => {
 
   const onIndividualVideo = async (e) => {
     const file = (e.target.files || [])[0];
-    if (!file || !isAuthenticated) return;
+    if (!file || (!adminMode && !isAuthenticated)) return;
     setUploading(true);
     setError('');
     try {
@@ -205,7 +218,7 @@ const RiderApply = () => {
 
   const onFleetVideo = async (e, index) => {
     const file = (e.target.files || [])[0];
-    if (!file || !isAuthenticated) return;
+    if (!file || (!adminMode && !isAuthenticated)) return;
     setUploading(true);
     setError('');
     try {
@@ -221,8 +234,12 @@ const RiderApply = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!isAuthenticated) {
+    if (!adminMode && !isAuthenticated) {
       navigate('/register');
+      return;
+    }
+    if (adminMode && !selectedUserId) {
+      setError('Select a user first');
       return;
     }
     setLoading(true);
@@ -259,7 +276,7 @@ const RiderApply = () => {
           photoUrl: (b.photoUrls || [])[0] || '',
           papersUrl: (b.documentUrls || [])[0] || '',
         }));
-        await api.post('/api/users/rider-application', {
+        const fleetPayload = {
           riderType: 'fleet',
           nin: form.nin,
           ninPhotoUrl,
@@ -271,9 +288,16 @@ const RiderApply = () => {
             phone: form.guarantorPhone,
             address: form.guarantorAddress,
           },
-        });
+        };
+        if (adminMode) {
+          await api.post('/api/admin/applications', { ...fleetPayload, userId: selectedUserId });
+          setMessage('Fleet application filed for selected user.');
+        } else {
+          await api.post('/api/users/rider-application', fleetPayload);
+          setMessage('Application submitted successfully! Admin will review and notify you.');
+        }
       } else {
-        await api.post('/api/users/rider-application', {
+        const individualPayload = {
           riderType: 'individual',
           nin: form.nin,
           ninPhotoUrl,
@@ -295,9 +319,35 @@ const RiderApply = () => {
             phone: form.guarantorPhone,
             address: form.guarantorAddress,
           },
-        });
+        };
+        if (adminMode) {
+          await api.post('/api/admin/applications', { ...individualPayload, userId: selectedUserId });
+          setMessage('Rider application filed for selected user.');
+        } else {
+          await api.post('/api/users/rider-application', individualPayload);
+          setMessage('Application submitted successfully! Admin will review and notify you.');
+        }
       }
-      setMessage('Application submitted successfully! Admin will review and notify you.');
+      // Reset all fields after successful submit
+      setForm({
+        riderType: 'individual',
+        nin: '',
+        numberOfBikes: 1,
+        plateNumber: '',
+        bikeModel: '',
+        bikeColor: '',
+        guarantorName: '',
+        guarantorPhone: '',
+        guarantorAddress: '',
+      });
+      setFleetBikes([emptyBike()]);
+      setPhotoUrls([]);
+      setDocumentUrls([]);
+      setVideoUrl('');
+      setNinPhotoUrl('');
+      setApplicationSelfieUrl('');
+      setCollapsedBikes({});
+      if (adminMode) setSelectedUserId('');
     } catch (err) {
       setError(err.response?.data?.message || 'Submission failed');
     } finally {
@@ -307,6 +357,7 @@ const RiderApply = () => {
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--gray-50)', padding: '32px 16px' }}>
+      {adminMode && <AdminNavbar />}
       <div className="container" style={{ maxWidth: 560 }}>
         <div style={{ marginBottom: 20 }}>
           <Link to="/" style={{ color: 'var(--primary)', fontWeight: 600 }}>
@@ -340,6 +391,17 @@ const RiderApply = () => {
           )}
 
           <form onSubmit={handleSubmit}>
+          {adminMode && (
+            <div className="form-group" style={{ marginBottom: 16 }}>
+              <label>Select user *</label>
+              <select required value={selectedUserId} onChange={(e) => setSelectedUserId(e.target.value)} style={{ width: '100%', padding: 10, borderRadius: 8 }}>
+                <option value="">— Choose customer / user —</option>
+                {customers.map((c) => (
+                  <option key={c._id} value={c._id}>{c.name} · {c.phone || c.email}</option>
+                ))}
+              </select>
+            </div>
+          )}
             <div className="form-group">
               <label>Application type</label>
               <select name="riderType" value={form.riderType} onChange={handleChange}>
@@ -412,7 +474,7 @@ const RiderApply = () => {
                 </div>
                 <div className="form-group">
                   <label>Documents</label>
-                  <input type="file" accept="image/*,application/pdf" multiple disabled={!isAuthenticated || uploading} onChange={onIndividualDocs} />
+                  <input type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple disabled={!isAuthenticated || uploading} onChange={onIndividualDocs} />
                   <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 6 }}>{documentUrls.length} file(s)</div>
                 </div>
                 <div className="form-group">
@@ -502,7 +564,7 @@ const RiderApply = () => {
                     <label>Documents</label>
                     <input
                       type="file"
-                      accept="image/*,application/pdf"
+                      accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                       multiple
                       disabled={!isAuthenticated || uploading}
                       onChange={(e) => onFleetDocs(e, index)}

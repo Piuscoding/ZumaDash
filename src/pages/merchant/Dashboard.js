@@ -257,34 +257,6 @@ const MerchantDashboard = () => {
 
       <div className="container" style={{ padding: '20px 16px', maxWidth: 900 }}>
 
-        <div className="card" style={{ padding: 16, marginBottom: 16 }}>
-          <h3 style={{ fontSize: 16, marginBottom: 8 }}>Fleet earnings export</h3>
-          {expMsg && <p style={{ fontSize: 13, marginBottom: 8 }}>{expMsg}</p>}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
-            <div>
-              <label style={{ fontSize: 12 }}>From</label>
-              <input type="date" value={expFrom} onChange={(e) => setExpFrom(e.target.value)} />
-            </div>
-            <div>
-              <label style={{ fontSize: 12 }}>To</label>
-              <input type="date" value={expTo} onChange={(e) => setExpTo(e.target.value)} />
-            </div>
-            <div>
-              <label style={{ fontSize: 12 }}>Rider (optional)</label>
-              <select value={expRider} onChange={(e) => setExpRider(e.target.value)}>
-                <option value="">All fleet riders</option>
-                {(riders || []).map((r) => (
-                  <option key={r._id} value={r._id}>{r.name}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button type="button" className="btn btn-primary" disabled={expBusy} onClick={() => exportEarnings('csv')}>Export CSV</button>
-            <button type="button" className="btn btn-secondary" disabled={expBusy} onClick={() => exportEarnings('pdf')}>Export PDF</button>
-          </div>
-        </div>
-
         {message && (
           <div style={{ background: '#e0f2fe', color: '#075985', padding: 12, borderRadius: 8, marginBottom: 12, fontSize: 14 }}>{message}</div>
         )}
@@ -305,6 +277,23 @@ const MerchantDashboard = () => {
 
         {tab === 'overview' && stats && (
           <div>
+          {/* 1) Number boxes first */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 12, marginBottom: 16 }}>
+            {[
+              ['Riders', stats.totalRiders],
+              ['Completed', stats.totalDeliveriesCompleted],
+              ['Not completed', stats.totalNotCompleted],
+              ['Commission owed', `₦${(stats.totalCommissionOwed || 0).toLocaleString()}`],
+              ['Pending clear', `₦${(stats.totalPendingClearance || 0).toLocaleString()}`],
+              ['Available', `₦${(stats.totalAvailable || 0).toLocaleString()}`],
+            ].map(([label, val]) => (
+              <div key={label} className="card" style={{ textAlign: 'center', padding: 14 }}>
+                <div style={{ fontSize: 18, fontWeight: 800 }}>{val}</div>
+                <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>{label}</div>
+              </div>
+            ))}
+          </div>
+
           {digest && (
             <div className="card" style={{ marginBottom: 16, background: 'var(--primary-light)', border: '1px solid #bbf7d0' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
@@ -323,6 +312,7 @@ const MerchantDashboard = () => {
             </div>
           )}
 
+          {/* 2) Chart second */}
           <div className="card" style={{ marginBottom: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
               <h3 style={{ fontSize: 15, margin: 0 }}>Fleet metrics (bar chart)</h3>
@@ -373,21 +363,36 @@ const MerchantDashboard = () => {
             </p>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 12 }}>
-            {[
-              ['Riders', stats.totalRiders],
-              ['Completed', stats.totalDeliveriesCompleted],
-              ['Not completed', stats.totalNotCompleted],
-              ['Commission owed', `₦${(stats.totalCommissionOwed || 0).toLocaleString()}`],
-              ['Pending clear', `₦${(stats.totalPendingClearance || 0).toLocaleString()}`],
-              ['Available', `₦${(stats.totalAvailable || 0).toLocaleString()}`],
-            ].map(([label, val]) => (
-              <div key={label} className="card" style={{ textAlign: 'center', padding: 14 }}>
-                <div style={{ fontSize: 18, fontWeight: 800 }}>{val}</div>
-                <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>{label}</div>
+          {/* 3) Fleet earnings export last */}
+
+          <div className="card" style={{ padding: 16, marginTop: 16, marginBottom: 16 }}>
+            <h3 style={{ fontSize: 16, marginBottom: 8 }}>Fleet earnings export</h3>
+            {expMsg && <p style={{ fontSize: 13, marginBottom: 8 }}>{expMsg}</p>}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
+              <div>
+                <label style={{ fontSize: 12 }}>From</label>
+                <input type="date" value={expFrom} onChange={(e) => setExpFrom(e.target.value)} />
               </div>
-            ))}
+              <div>
+                <label style={{ fontSize: 12 }}>To</label>
+                <input type="date" value={expTo} onChange={(e) => setExpTo(e.target.value)} />
+              </div>
+              <div>
+                <label style={{ fontSize: 12 }}>Rider (optional)</label>
+                <select value={expRider} onChange={(e) => setExpRider(e.target.value)}>
+                  <option value="">All fleet riders</option>
+                  {(riders || []).map((r) => (
+                    <option key={r._id} value={r._id}>{r.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button type="button" className="btn btn-primary" disabled={expBusy} onClick={() => exportEarnings('csv')}>Export CSV</button>
+              <button type="button" className="btn btn-secondary" disabled={expBusy} onClick={() => exportEarnings('pdf')}>Export PDF</button>
+            </div>
           </div>
+
           </div>
         )}
 

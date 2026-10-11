@@ -521,13 +521,31 @@ const TrackDelivery = () => {
           <div className="card" style={{ marginTop: 12 }}>
             <h3 style={{ fontSize: 15, marginBottom: 12 }}>Your offers on this job</h3>
             {(job.offers || [])
-              .filter((o) => String(o.rider?._id || o.rider) === String(user?._id || user?.id))
+              .filter((o) => {
+                const rid = String(o.rider?._id || o.rider || '');
+                const uid = String(user?._id || user?.id || '');
+                // Backend may already return only this rider's offers (bargaining payload)
+                if (!rid || rid === 'undefined') return true;
+                return rid === uid;
+              })
               .map((offer) => (
                 <div key={offer._id} style={{ padding: '10px 0', borderBottom: '1px solid var(--gray-100)' }}>
                   <div style={{ fontSize: 14 }}>
                     Your offer: <strong>₦{(offer.amount || 0).toLocaleString()}</strong>
-                    <span className="badge badge-info" style={{ marginLeft: 8 }}>{offer.status}</span>
+                    <span className="badge badge-info" style={{ marginLeft: 8 }}>{String(offer.status || '').replace(/_/g, ' ')}</span>
                   </div>
+                  {(offer.history || []).length > 0 && (
+                    <div style={{ marginTop: 8, padding: 8, background: 'var(--gray-50)', borderRadius: 8, fontSize: 12 }}>
+                      <strong>Negotiation history</strong>
+                      {(offer.history || []).map((h, hi) => (
+                        <div key={hi} style={{ marginTop: 4 }}>
+                          {h.by === 'customer' ? 'Customer' : 'You'}: ₦{(h.amount || 0).toLocaleString()}
+                          {h.message ? ` — ${h.message}` : ''}
+                          {h.at ? ` · ${new Date(h.at).toLocaleString()}` : ''}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   {offer.status === 'countered' && (
                     <div style={{ marginTop: 10 }}>
                       <p style={{ fontSize: 13 }}>

@@ -229,6 +229,23 @@ const AvailableJobs = () => {
                   {detail.bookingVideo && (
                     <video controls src={detail.bookingVideo} style={{ width: '100%', marginTop: 10, borderRadius: 8 }} />
                   )}
+                  {(detail.offers || []).length > 0 && (
+                    <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--gray-200)' }}>
+                      <strong style={{ fontSize: 13 }}>Your negotiation history</strong>
+                      {(detail.offers || []).map((o) => (
+                        <div key={o._id || String(o.amount)} style={{ fontSize: 13, marginTop: 8, padding: 10, background: 'var(--gray-50)', borderRadius: 8 }}>
+                          <div>Your offer: <strong>₦{(o.amount || 0).toLocaleString()}</strong> · {String(o.status || '').replace(/_/g, ' ')}</div>
+                          {o.counterAmount != null && Number(o.counterAmount) > 0 && (
+                            <div style={{ marginTop: 4, color: '#b45309' }}>
+                              Customer counter: <strong>₦{Number(o.counterAmount).toLocaleString()}</strong>
+                              {o.counterMessage ? ` — ${o.counterMessage}` : ''}
+                            </div>
+                          )}
+                          {o.message && <div style={{ color: 'var(--gray-500)', marginTop: 4 }}>{o.message}</div>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   <p style={{ fontSize: 12, color: 'var(--gray-400)', marginTop: 12 }}>
                     Tracking ID and delivery status unlock after you accept the job.
                   </p>

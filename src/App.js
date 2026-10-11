@@ -7,6 +7,9 @@ import Landing from './pages/Landing';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import VerifyWhatsApp from './pages/VerifyWhatsApp';
+import AdminCreateCustomer from './pages/admin/AdminCreateCustomer';
+import AdminBookDelivery from './pages/admin/AdminBookDelivery';
+import AdminRiderApply from './pages/admin/AdminRiderApply';
 import LanguageSwitcher from './components/LanguageSwitcher';
 import DeviceOtp from './pages/DeviceOtp';
 import RiderApply from './pages/RiderApply';
@@ -94,6 +97,9 @@ function App() {
 
         {/* Admin */}
         <Route path="/admin" element={<PrivateRoute roles={['admin', 'manager']}><AdminDashboard /></PrivateRoute>} />
+        <Route path="/admin/create-customer" element={<PrivateRoute roles={['admin', 'manager']}><AdminCreateCustomer /></PrivateRoute>} />
+        <Route path="/admin/book" element={<PrivateRoute roles={['admin', 'manager']}><AdminBookDelivery /></PrivateRoute>} />
+        <Route path="/admin/applications" element={<PrivateRoute roles={['admin', 'manager']}><AdminRiderApply /></PrivateRoute>} />
 
         {/* Merchant */}
         <Route path="/merchant" element={<PrivateRoute roles={['merchant']}><MerchantDashboard /></PrivateRoute>} />

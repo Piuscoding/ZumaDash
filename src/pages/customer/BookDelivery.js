@@ -1,20 +1,51 @@
+import { useBranding } from '../../context/BrandingContext';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import AdminNavbar from '../../components/AdminNavbar';
 import CustomerNavbar from '../../components/CustomerNavbar';
 import api from '../../services/api';
 import MapPicker from '../../components/map/MapPicker';
 import { useAuth } from '../../context/AuthContext';
 import { useI18n } from '../../context/I18nContext';
 import { savePendingBooking, getPendingBooking } from '../../utils/pendingBooking';
-import { uploadImage, uploadFile, fileToDataUrl } from '../../services/upload';
+import { uploadImage, uploadFile, fileToDataUrl, ensureCloudinaryUrl } from '../../services/upload';
 // saved addresses loaded when authenticated
 
-const BookDelivery = () => {
+const BookDelivery = ({ adminMode = false } = {}) => {
   const { t } = useI18n();
+
+  // Admin: book on behalf of a selected customer
+  const [customers, setCustomers] = useState([]);
+  const [selectedCustomerId, setSelectedCustomerId] = useState('');
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
+
+  useEffect(() => {
+    if (!adminMode) return undefined;
+    (async () => {
+      try {
+        const res = await api.get('/api/admin/customers');
+        setCustomers(res.data.customers || []);
+      } catch (_) {}
+    })();
+  }, [adminMode]);
+
+  useEffect(() => {
+    if (!adminMode || !selectedCustomerId) {
+      setSelectedCustomer(null);
+      return undefined;
+    }
+    const c = customers.find((x) => String(x._id) === String(selectedCustomerId));
+    setSelectedCustomer(c || null);
+  }, [adminMode, selectedCustomerId, customers]);
+
+  const { platformName } = useBranding();
   const { user, isAuthenticated } = useAuth();
+  const bookingUser = adminMode ? selectedCustomer : user;
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [mediaRecorder, setMediaRecorder] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const [bankDetails, setBankDetails] = useState({
@@ -258,7 +289,7 @@ const BookDelivery = () => {
     dropoffDescription: form.dropoffDescription,
     packageSize: form.packageSize,
     packageDescription: form.packageDescription,
-    paymentMethod: (form.paymentMethod === 'cash' && user?.kycStatus !== 'approved') ? 'bank_transfer' : form.paymentMethod,
+    paymentMethod: (form.paymentMethod === 'cash' && bookingUser?.kycStatus !== 'approved') ? 'bank_transfer' : form.paymentMethod,
     suggestedPrice: Number(form.suggestedPrice),
         locationMode: bookingMode === 'map' && mapQuote?.locationMode === 'map' ? 'map' : 'text',
         mapDistanceKm: bookingMode === 'map' && mapQuote?.locationMode === 'map' ? mapQuote.mapDistanceKm : undefined,
@@ -266,8 +297,8 @@ const BookDelivery = () => {
         osrmDurationSec: bookingMode === 'map' && mapQuote?.locationMode === 'map' ? mapQuote.osrmDurationSec : undefined,
         displayDurationSec: bookingMode === 'map' && mapQuote?.locationMode === 'map' ? mapQuote.displayDurationSec : undefined,
     distanceBand: 'same_zone',
-    contactName: user?.name || '',
-    contactPhone: user?.phone || '',
+    contactName: (adminMode ? bookingUser?.name : user?.name) || '',
+    contactPhone: (adminMode ? bookingUser?.phone : user?.phone) || '',
     pickupPhotos: form.pickupPhotos,
     dropoffPhotos: form.dropoffPhotos,
     paymentReference: form.paymentReference || '',
@@ -281,8 +312,8 @@ const BookDelivery = () => {
         pickup: {
           description: form.pickupDescription,
           coordinates: bookingMode === 'map' && pickupPin ? { lat: pickupPin.lat, lng: pickupPin.lng } : undefined,
-          contactName: user?.name,
-          contactPhone: user?.phone,
+          contactName: (adminMode ? bookingUser?.name : user?.name),
+          contactPhone: (adminMode ? bookingUser?.phone : user?.phone),
           photos: form.pickupPhotos.filter((u) => !String(u).startsWith('data:')),
         },
         dropoff: {
@@ -301,13 +332,32 @@ const BookDelivery = () => {
         paymentMethod: form.paymentMethod,
         distanceBand: 'same_zone',
         paymentReference: form.paymentMethod === 'bank_transfer' ? (form.paymentReference || '').trim() || null : null,
-        bookingVoiceNote: form.bookingVoiceNote && !String(form.bookingVoiceNote).startsWith('data:') ? form.bookingVoiceNote : null,
-        bookingVideo: form.bookingVideo && !String(form.bookingVideo).startsWith('data:') ? form.bookingVideo : null,
+        bookingVoiceNote: (() => {
+          const v = form.bookingVoiceNote;
+          if (typeof v !== 'string' || !v.trim()) return null;
+          if (v.startsWith('data:') || v.startsWith('blob:')) return null;
+          return v;
+        })(),
+        bookingVideo: (() => {
+          const v = form.bookingVideo;
+          if (typeof v !== 'string' || !v.trim()) return null;
+          if (v.startsWith('data:') || v.startsWith('blob:')) return null;
+          return v;
+        })(),
       };
 
-      const res = await api.post('/api/jobs', payload);
+      let res;
+      if (adminMode) {
+        if (!selectedCustomerId) {
+          setError('Select a customer first');
+          setLoading(false);
+          return;
+        }
+        res = await api.post('/api/admin/jobs', { ...payload, customerId: selectedCustomerId });
+      } else {
+        res = await api.post('/api/jobs', payload);
+      }
       const job = res.data.job;
-      // Always go to track; status (e.g. pending_payment_approval) shows there
       navigate(`/track/${job._id}`);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to create delivery. Please try again.');
@@ -326,6 +376,10 @@ const BookDelivery = () => {
   };
 
   const finishOrAuthGate = () => {
+    if (adminMode) {
+      createJobNow();
+      return;
+    }
     if (isAuthenticated && user?.role === 'customer') {
       createJobNow();
       return;
@@ -390,19 +444,87 @@ const BookDelivery = () => {
     </div>
   );
 
+
+  const startVoiceRecord = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const rec = new MediaRecorder(stream);
+      const chunks = [];
+      rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+      rec.onstop = async () => {
+        stream.getTracks().forEach((tr) => tr.stop());
+        const blob = new Blob(chunks, { type: 'audio/webm' });
+        const localUrl = URL.createObjectURL(blob);
+        // Immediate playback while Cloudinary upload runs
+        setForm((f) => ({ ...f, bookingVoiceNote: localUrl }));
+        const file = new File([blob], `voice-${Date.now()}.webm`, { type: 'audio/webm' });
+        try {
+          setUploading(true);
+          // Must use uploadFile(File) — ensureCloudinaryUrl expects a data: URL string
+          const url = await uploadFile(file, 'zumadash/booking/voice');
+          if (url && typeof url === 'string') {
+            try { URL.revokeObjectURL(localUrl); } catch (_) {}
+            setForm((f) => ({ ...f, bookingVoiceNote: url }));
+          }
+        } catch (err) {
+          console.error(err);
+          // keep local blob so user can still hear it; block submit until re-record/upload
+        } finally {
+          setUploading(false);
+        }
+      };
+      rec.start();
+      setMediaRecorder(rec);
+      setIsRecording(true);
+    } catch (err) {
+      alert('Microphone permission is required to record a voice note.');
+    }
+  };
+
+  const stopVoiceRecord = () => {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+    setIsRecording(false);
+    setMediaRecorder(null);
+  };
+
+
   return (
     <div style={{ minHeight: '100vh', background: 'var(--gray-50)', padding: '24px 16px' }}>
-      <CustomerNavbar />
+      {adminMode ? <AdminNavbar /> : <CustomerNavbar />}
       <div className="container" style={{ maxWidth: 600 }}>
         <div style={{ marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Link to={backLink} style={{ color: 'var(--primary)', fontWeight: 600 }}>
             ← {isAuthenticated ? 'Dashboard' : 'Home'}
           </Link>
-          <span style={{ fontWeight: 700, color: 'var(--primary)' }}>⛰ ZumaDash</span>
+          <span style={{ fontWeight: 700, color: 'var(--primary)' }}>⛰ {platformName}</span>
         </div>
 
         <div className="card">
-          <h1 style={{ fontSize: 22, marginBottom: 8 }}>Book a Delivery</h1>
+          <h1 style={{ fontSize: 22, marginBottom: 8 }}>{adminMode ? 'Book for customer' : 'Book a Delivery'}</h1>
+          {adminMode && (
+            <div className="form-group" style={{ marginBottom: 16 }}>
+              <label>Select customer *</label>
+              <select
+                required
+                value={selectedCustomerId}
+                onChange={(e) => setSelectedCustomerId(e.target.value)}
+                style={{ width: '100%', padding: 10, borderRadius: 8 }}
+              >
+                <option value="">— Choose customer —</option>
+                {customers.map((c) => (
+                  <option key={c._id} value={c._id}>
+                    {c.name} · {c.phone || c.email}
+                    {c.kycStatus === 'approved' ? ' · KYC OK' : ' · KYC pending'}
+                  </option>
+                ))}
+              </select>
+              {selectedCustomer && (
+                <p style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 6 }}>
+                  KYC: {selectedCustomer.kycStatus || 'none'} — COD {selectedCustomer.kycStatus === 'approved' ? 'allowed' : 'not allowed'}
+                </p>
+              )}
+            </div>
+          )}
           <p style={{ color: 'var(--gray-500)', fontSize: 14, marginBottom: 8 }}>
             {t('book.corridorOnly')}
           </p>
@@ -674,13 +796,30 @@ const BookDelivery = () => {
             <>
               
               <div className="form-group">
-                <label>Voice note (optional)</label>
-                <input type="file" accept="audio/*" disabled={uploading} onChange={(e) => handleMediaFile(e, 'bookingVoiceNote', 'voice')} />
+                <label>{t ? t('book.voiceNote') : 'Voice note (optional)'}</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+                  {!isRecording ? (
+                    <button type="button" className="btn btn-secondary" disabled={uploading || !!form.bookingVoiceNote} onClick={startVoiceRecord} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <span aria-hidden style={{ fontSize: 16 }}>🎤</span> {t ? t('book.recordVoice') : 'Record voice note'}
+                    </button>
+                  ) : (
+                    <button type="button" className="btn btn-primary" onClick={stopVoiceRecord} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <span aria-hidden>⏹</span> {t ? t('book.stopRecord') : 'Stop recording'}
+                    </button>
+                  )}
+                  <span style={{ fontSize: 12, color: 'var(--gray-500)' }}>{t ? t('book.orUpload') : 'or upload a file'}</span>
+                </div>
+                <input type="file" accept="audio/*" disabled={uploading || isRecording || !!form.bookingVoiceNote} onChange={(e) => handleMediaFile(e, 'bookingVoiceNote', 'voice')} />
                 <small style={{ color: 'var(--gray-500)', fontSize: 12 }}>Short audio for landmarks / instructions.</small>
                 {form.bookingVoiceNote && (
                   <div style={{ marginTop: 8 }}>
                     <audio controls src={form.bookingVoiceNote} style={{ width: '100%', maxWidth: 320 }} />
-                    <button type="button" className="btn btn-secondary" style={{ marginTop: 6, padding: '4px 10px', fontSize: 12 }} onClick={() => setForm((f) => ({ ...f, bookingVoiceNote: '' }))}>Remove</button>
+                    <button type="button" className="btn btn-secondary" style={{ marginTop: 6, padding: '4px 10px', fontSize: 12 }} onClick={() => setForm((f) => {
+                      if (f.bookingVoiceNote && String(f.bookingVoiceNote).startsWith('blob:')) {
+                        try { URL.revokeObjectURL(f.bookingVoiceNote); } catch (_) {}
+                      }
+                      return { ...f, bookingVoiceNote: '' };
+                    })}>Remove</button>
                   </div>
                 )}
               </div>
@@ -721,16 +860,16 @@ const BookDelivery = () => {
                 <label>Payment Method</label>
                 <select
                   name="paymentMethod"
-                  value={form.paymentMethod === 'cash' && user?.kycStatus !== 'approved' ? 'bank_transfer' : form.paymentMethod}
+                  value={form.paymentMethod === 'cash' && bookingUser?.kycStatus !== 'approved' ? 'bank_transfer' : form.paymentMethod}
                   onChange={(e) => {
-                    if (e.target.value === 'cash' && user?.kycStatus !== 'approved') return;
+                    if (e.target.value === 'cash' && bookingUser?.kycStatus !== 'approved') return;
                     handleChange(e);
                   }}
                 >
-                  {user?.kycStatus === 'approved' && <option value="cash">Cash on Delivery</option>}
+                  {bookingUser?.kycStatus === 'approved' && <option value="cash">Cash on Delivery</option>}
                   <option value="bank_transfer">Bank Transfer</option>
                 </select>
-                {user?.kycStatus !== 'approved' && (
+                {bookingUser?.kycStatus !== 'approved' && (
                   <p style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 6 }}>
                     Cash on Delivery needs approved KYC.{' '}
                     <a href="/settings" style={{ color: 'var(--primary)', fontWeight: 600 }}>Complete KYC in Settings</a>.
