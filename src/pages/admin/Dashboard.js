@@ -147,7 +147,7 @@ const AdminDashboard = () => {
         if (s.logoUrl || s.platformLogo) setLogoUrl(s.logoUrl || s.platformLogo || '');
         if (s.priceBands) setPriceBands(JSON.parse(JSON.stringify(s.priceBands)));
         setMapBookingEnabled(!!s.mapBookingEnabled);
-        setMapStackDefault(s.mapStackDefault === 'tomtom_full' ? 'tomtom_full' : 'tomtom_osrm_hybrid');
+        setMapStackDefault(['tomtom_full','tomtom_osrm_hybrid','osrm_osm','osm_tomtom_routing'].includes(s.mapStackDefault) ? s.mapStackDefault : 'tomtom_osrm_hybrid');
         setMerchantSelfDeliveryCommissionPercent(
           s.merchantOwnGoodsCommissionPercent ?? s.merchantSelfDeliveryCommissionPercent ?? 7.5
         );
@@ -1538,10 +1538,12 @@ const AdminDashboard = () => {
                     >
                       <option value="tomtom_osrm_hybrid">TomTom visual + OSRM routing (tomtom_osrm_hybrid)</option>
                       <option value="tomtom_full">TomTom full — tiles + search + TomTom routing (tomtom_full)</option>
+                      <option value="osrm_osm">OSM/Carto + Nominatim + OSRM (osrm_osm)</option>
+                      <option value="osm_tomtom_routing">OSM/Carto + Nominatim + TomTom routing (osm_tomtom_routing)</option>
                     </select>
                     <p style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 6 }}>
                       Full: TomTom draws the map, search, and calculates road distance/route.
-                      Hybrid: TomTom draws the map and search; distance/route use local OSRM (better control for motorcycle-style paths; lower TomTom routing cost).
+                      Hybrid: TomTom draws the map and search; distance/route use local OSRM. OSM+OSRM: MAP_TILE_URL + Nominatim + OSRM. OSM+TomTom routing: MAP_TILE_URL + Nominatim + TomTom routes (better control for motorcycle-style paths; lower TomTom routing cost).
                     </p>
                   </div>
                   <div className="form-group" style={{ marginTop: 12 }}>

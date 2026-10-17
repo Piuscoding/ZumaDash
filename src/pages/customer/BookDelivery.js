@@ -12,6 +12,13 @@ import { savePendingBooking, getPendingBooking } from '../../utils/pendingBookin
 import { uploadImage, uploadFile, fileToDataUrl, ensureCloudinaryUrl } from '../../services/upload';
 // saved addresses loaded when authenticated
 
+const CORRIDOR_HINT = 'Must include one of: Dutse, Kubwa, Bwari, Ushafa';
+
+function hasCorridor(text) {
+  const t = String(text || '').toLowerCase();
+  return ['dutse', 'kubwa', 'bwari', 'ushafa'].some((c) => t.includes(c));
+}
+
 const BookDelivery = ({ adminMode = false } = {}) => {
   const { t } = useI18n();
 
@@ -102,10 +109,13 @@ const BookDelivery = ({ adminMode = false } = {}) => {
       .catch(() => {});
     api.get('/api/map/config')
       .then((res) => {
+        const tile = res.data.mapTileUrl || '';
         setMapConfig({
           mapBookingEnabled: !!res.data.mapBookingEnabled,
-          mapTileUrl: res.data.mapTileUrl || '',
+          mapTileUrl: tile,
+          mapStackDefault: res.data.mapStackDefault || '',
         });
+        if (tile) setMapTileUrl(tile);
       })
       .catch(() => {});
 
@@ -734,7 +744,7 @@ const BookDelivery = ({ adminMode = false } = {}) => {
                     activeField={activeField}
                     onPick={onMapPick}
                     flyTarget={flyTarget}
-                    tileUrl={mapTileUrl}
+                    tileUrl={mapTileUrl || mapConfig.mapTileUrl || ''}
                     height={260}
                     label="Map — tap to place pin for the active field"
                   />
@@ -802,8 +812,25 @@ const BookDelivery = ({ adminMode = false } = {}) => {
               <PhotoRow field="dropoffPhotos" label="Drop-off photos (optional)" />
               <button
                 className="btn btn-primary btn-block"
-                onClick={() => setStep(2)}
-                disabled={!form.pickupDescription || !form.dropoffDescription || uploading}
+                onClick={() => {
+                  if (!hasCorridor(form.pickupDescription)) {
+                    setError('Invalid pickup address — must include Dutse, Kubwa, Bwari or Ushafa');
+                    return;
+                  }
+                  if (!hasCorridor(form.dropoffDescription)) {
+                    setError('Invalid drop-off address — must include Dutse, Kubwa, Bwari or Ushafa');
+                    return;
+                  }
+                  setError('');
+                  setStep(2);
+                }}
+                disabled={
+                  !form.pickupDescription ||
+                  !form.dropoffDescription ||
+                  uploading ||
+                  !hasCorridor(form.pickupDescription) ||
+                  !hasCorridor(form.dropoffDescription)
+                }
               >
                 Next →
               </button>

@@ -6,9 +6,16 @@ import { registerPush } from '../services/push';
 import RoleNavbar from '../components/RoleNavbar';
 import { uploadFile } from '../services/upload';
 
+const CORRIDOR_HINT = 'Must include one of: Dutse, Kubwa, Bwari, Ushafa';
+
+function hasCorridor(text) {
+  const t = String(text || '').toLowerCase();
+  return ['dutse', 'kubwa', 'bwari', 'ushafa'].some((c) => t.includes(c));
+}
+
 const Profile = () => {
   const { user, logout, refreshUser } = useAuth();
-  const [form, setForm] = useState({ name: '', phone: '' });
+  const [form, setForm] = useState({ name: '', phone: '', address: '' });
   const [addresses, setAddresses] = useState([]);
   const [newAddr, setNewAddr] = useState({ label: '', description: '', zone: '' });
   const [bikeForm, setBikeForm] = useState({ plate: '', model: '', color: '' });
@@ -16,11 +23,25 @@ const Profile = () => {
   const [loading, setLoading] = useState(false);
   const [section, setSection] = useState('profile');
 
-  const back = user?.role === 'rider' ? '/rider' : user?.role === 'admin' ? '/admin' : '/dashboard';
+  const back =
+    user?.role === 'rider'
+      ? '/rider'
+      : user?.role === 'admin' || user?.role === 'manager'
+        ? '/admin'
+        : user?.role === 'merchant'
+          ? '/merchant'
+          : '/dashboard';
+
+  const addressLocked =
+    user?.addressLockedUntil && new Date(user.addressLockedUntil).getTime() > Date.now();
 
   useEffect(() => {
     if (user) {
-      setForm({ name: user.name || '', phone: user.phone || '' });
+      setForm({
+        name: user.name || '',
+        phone: user.phone || '',
+        address: user.address || '',
+      });
       if (user.bikeDetails?.[0]) {
         setBikeForm({
           plate: user.bikeDetails[0].plate || '',
@@ -29,8 +50,9 @@ const Profile = () => {
         });
       }
     }
-    if (user?.role === 'customer' || user?.role === 'rider') {
-      api.get('/api/users/addresses')
+    if (user?.role === 'customer' || user?.role === 'rider' || user?.role === 'merchant') {
+      api
+        .get('/api/users/addresses')
         .then((res) => setAddresses(res.data.addresses || []))
         .catch(() => {});
     }
@@ -61,9 +83,23 @@ const Profile = () => {
     setLoading(true);
     setMessage('');
     try {
-      await api.put('/api/users/me', form);
+      const payload = { name: form.name, phone: form.phone };
+      if (!addressLocked) {
+        const addr = String(form.address || '').trim();
+        if (addr && !hasCorridor(addr)) {
+          setMessage(`Invalid address — ${CORRIDOR_HINT}`);
+          setLoading(false);
+          return;
+        }
+        payload.address = addr;
+      }
+      await api.put('/api/users/me', payload);
       if (refreshUser) await refreshUser();
-      setMessage('Profile updated');
+      setMessage(
+        addressLocked
+          ? 'Profile updated (address is locked)'
+          : 'Profile updated. Address locked for 30 days.'
+      );
     } catch (err) {
       setMessage(err.response?.data?.message || 'Update failed');
     } finally {
@@ -73,6 +109,10 @@ const Profile = () => {
 
   const addAddress = async (e) => {
     e.preventDefault();
+    if (!hasCorridor(newAddr.description)) {
+      setMessage(`Invalid address — ${CORRIDOR_HINT}`);
+      return;
+    }
     try {
       const res = await api.post('/api/users/addresses', newAddr);
       setAddresses(res.data.addresses || []);
@@ -171,6 +211,32 @@ const Profile = () => {
               <div className="form-group">
                 <label>Phone</label>
                 <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} required />
+              </div>
+              <div className="form-group">
+                <label>Primary address (pickup / business)</label>
+                <textarea
+                  rows={2}
+                  value={form.address}
+                  onChange={(e) => setForm({ ...form, address: e.target.value })}
+                  readOnly={!!addressLocked}
+                  disabled={!!addressLocked}
+                  placeholder="e.g. Kubwa Phase 2, opposite NNPC…"
+                  style={{
+                    opacity: addressLocked ? 0.75 : 1,
+                    background: addressLocked ? '#f1f5f9' : undefined,
+                    cursor: addressLocked ? 'not-allowed' : undefined,
+                  }}
+                />
+                <small style={{ fontSize: 12, color: addressLocked ? '#b45309' : '#64748b' }}>
+                  {addressLocked
+                    ? `Locked until ${new Date(user.addressLockedUntil).toLocaleDateString()}. Cannot change for 30 days after last update.`
+                    : CORRIDOR_HINT}
+                </small>
+                {form.address && !hasCorridor(form.address) && !addressLocked && (
+                  <div style={{ color: '#b91c1c', fontSize: 12, marginTop: 4 }}>
+                    Invalid — must include Dutse, Kubwa, Bwari or Ushafa
+                  </div>
+                )}
               </div>
               <button type="submit" className="btn btn-primary btn-block" disabled={loading}>
                 {loading ? 'Saving...' : 'Save profile'}

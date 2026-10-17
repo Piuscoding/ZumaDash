@@ -414,22 +414,7 @@ const MerchantDashboard = () => {
 
         {tab === 'riders' && (
           <div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
-              <Link to="/merchant/book" className="btn btn-primary" style={{ padding: '8px 12px', fontSize: 13 }}>Book own goods</Link>
-              <Link to="/merchant/add-fleet" className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: 13 }}>Add more fleets</Link>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12, marginBottom: 16 }}>
-              {(riders || []).map((r) => (
-                <Link key={`ctl-${r._id}`} to={`/merchant/riders/${r._id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
-                  <div className="card" style={{ padding: 14, cursor: 'pointer' }}>
-                    <strong>{r.name}</strong>
-                    <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>{r.email}</div>
-                    <div style={{ fontSize: 11, color: 'var(--primary)', marginTop: 6 }}>Open controls →</div>
-                  </div>
-                </Link>
-              ))}
-            </div>
-
+            {/* Add rider form first */}
             <div className="card" style={{ marginBottom: 20 }}>
               <h3 style={{ fontSize: 16, marginBottom: 12 }}>Add rider</h3>
               <form onSubmit={createRider}>
@@ -465,33 +450,34 @@ const MerchantDashboard = () => {
               </form>
             </div>
 
-            {riders.map((r) => (
-              <div key={r._id} className="card" style={{ marginBottom: 12, padding: 14 }}>
-                <strong>{r.name}</strong>
-                <div style={{ fontSize: 13, color: 'var(--gray-500)' }}>{r.email} · {r.phone}</div>
-                <div style={{ fontSize: 12, marginTop: 4 }}>
-                  Available ₦{(r.availableBalance || 0).toLocaleString()} · Pending ₦{(r.pendingClearance || 0).toLocaleString()} · Owed ₦{(r.commissionOwed || 0).toLocaleString()}
-                </div>
-                <div style={{ marginTop: 10, fontSize: 13 }}>
-                  <label style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
-                    <input type="checkbox" checked={r.fleetFlags?.allowTakeJobs !== false} onChange={(e) => updateLocalFlag(r._id, 'allowTakeJobs', e.target.checked)} /> Allow take jobs
-                  </label>
-                  <label style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
-                    <input type="checkbox" checked={!!r.fleetFlags?.suspended} onChange={(e) => updateLocalFlag(r._id, 'suspended', e.target.checked)} /> Suspended
-                  </label>
-                  <label style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
-                    <input type="checkbox" checked={!!r.fleetFlags?.blockWithdrawals} onChange={(e) => updateLocalFlag(r._id, 'blockWithdrawals', e.target.checked)} /> Block withdrawals
-                  </label>
-                  <label style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                    <input type="checkbox" checked={!!r.fleetFlags?.allowMerchantWithdraw} onChange={(e) => updateLocalFlag(r._id, 'allowMerchantWithdraw', e.target.checked)} /> Merchant can withdraw
-                  </label>
-                </div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button type="button" className="btn btn-primary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => saveFlags(r)}>Save</button>
-                  <button type="button" className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => deleteRider(r._id)}>Delete</button>
-                </div>
-              </div>
-            ))}
+            {/* Created riders list — name, email, open controls (no inline checkboxes) */}
+            <h3 style={{ fontSize: 16, marginBottom: 12 }}>Your riders</h3>
+            {(!riders || riders.length === 0) && (
+              <p style={{ color: '#64748b', fontSize: 14 }}>No riders yet. Create one above.</p>
+            )}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
+              {(riders || []).map((r) => (
+                <Link
+                  key={r._id}
+                  to={`/merchant/riders/${r._id}/controls`}
+                  style={{ textDecoration: 'none', color: 'inherit' }}
+                >
+                  <div className="card" style={{ padding: 14, cursor: 'pointer', border: '1px solid #e2e8f0' }}>
+                    <strong style={{ fontSize: 15 }}>{r.name || 'Rider'}</strong>
+                    <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 4 }}>{r.email}</div>
+                    {r.phone && (
+                      <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>{r.phone}</div>
+                    )}
+                    {r.fleetFlags?.suspended && (
+                      <span style={{ fontSize: 11, color: '#b91c1c', fontWeight: 600 }}>Suspended</span>
+                    )}
+                    <div style={{ fontSize: 12, color: '#0f766e', marginTop: 8, fontWeight: 600 }}>
+                      Open controls →
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
           </div>
         )}
 

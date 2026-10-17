@@ -122,8 +122,8 @@ const MapPicker = ({
           border: '1px solid var(--gray-200)',
         }}
       >
-        <MapContainer center={center} zoom={12} style={{ height: '100%', width: '100%' }} scrollWheelZoom attributionControl={false}>
-          <TileLayer url={tile} />
+        <MapContainer key={tile} center={center} zoom={12} style={{ height: '100%', width: '100%' }} scrollWheelZoom attributionControl={false}>
+          <TileLayer url={tile} attribution="© OpenStreetMap / map data providers" />
           <InvalidateSize />
           <ClickHandler onPick={onPick} activeField={activeField} />
           <FlyTo target={flyTarget} />

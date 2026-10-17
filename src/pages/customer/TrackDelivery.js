@@ -45,6 +45,11 @@ const TrackDelivery = () => {
   const [mapMeta, setMapMeta] = useState({ tileUrl: '', riderMarkerUrl: '' }); // { type: 'image'|'video', url }
   const [counterDraft, setCounterDraft] = useState({}); // offerId -> amount
   const [riderReoffer, setRiderReoffer] = useState({}); // offerId -> amount
+  const [remainingRef, setRemainingRef] = useState('');
+  const [remainingBusy, setRemainingBusy] = useState(false);
+  const [nowTs, setNowTs] = useState(Date.now());
+  const [bankDetails, setBankDetails] = useState({ bankName: '', accountName: '', accountNumber: '' });
+
 
   const fetchJob = async () => {
     try {
@@ -61,6 +66,18 @@ const TrackDelivery = () => {
     fetchJob();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  useEffect(() => {
+    const t = setInterval(() => setNowTs(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    api.get('/api/settings/public').then((r) => {
+      const bd = r.data.settings?.bankDetails || r.data.bankDetails;
+      if (bd) setBankDetails(bd);
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     api.get('/api/map/config')
@@ -317,6 +334,45 @@ const TrackDelivery = () => {
     );
   };
 
+
+  const remainingBal = Number(job.remainingBalance) || 0;
+  const hasRemaining = remainingBal > 0 && job.status === 'pending_payment_approval';
+  const deadlineMs = job.remainingPaymentDeadline ? new Date(job.remainingPaymentDeadline).getTime() : 0;
+  const secsLeft = deadlineMs ? Math.max(0, Math.floor((deadlineMs - nowTs) / 1000)) : 0;
+  const mm = String(Math.floor(secsLeft / 60)).padStart(2, '0');
+  const ss = String(secsLeft % 60).padStart(2, '0');
+  const canDecline = hasRemaining && secsLeft === 0 && user?.role === 'rider';
+  const isCustomerUser = user && job.customer && String(job.customer._id || job.customer) === String(user._id || user.id);
+
+  const submitRemaining = async () => {
+    setRemainingBusy(true);
+    setMessage('');
+    try {
+      const res = await api.post(`/api/jobs/${job._id}/submit-remaining-payment`, {
+        paymentReference: remainingRef,
+      });
+      setJob(res.data.job);
+      setMessage('Remaining payment submitted — waiting for admin approval.');
+    } catch (e) {
+      setMessage(e.response?.data?.message || 'Could not submit remaining payment');
+    } finally {
+      setRemainingBusy(false);
+    }
+  };
+
+  const declineRemaining = async () => {
+    setRemainingBusy(true);
+    try {
+      await api.post(`/api/jobs/${job._id}/decline-remaining`);
+      setMessage('You declined this job.');
+      fetchJob();
+    } catch (e) {
+      setMessage(e.response?.data?.message || 'Could not decline');
+    } finally {
+      setRemainingBusy(false);
+    }
+  };
+
   return (
     <div style={{ minHeight: '100vh', background: 'var(--gray-50)' }}>
       <RoleNavbar />
@@ -328,6 +384,93 @@ const TrackDelivery = () => {
         {message && (
           <div style={{ background: '#e0f2fe', color: '#075985', padding: 12, borderRadius: 8, margin: '12px 0', fontSize: 14 }}>
             {message}
+          </div>
+        )}
+
+        {hasRemaining && (
+          <div
+            style={{
+              position: 'relative',
+              zIndex: 50,
+              marginTop: 16,
+              marginBottom: 16,
+              background: '#fff7ed',
+              border: '2px solid #f59e0b',
+              borderRadius: 12,
+              padding: 20,
+              boxShadow: '0 8px 30px rgba(0,0,0,0.12)',
+            }}
+          >
+            <h2 style={{ fontSize: 17, margin: '0 0 8px', color: '#9a3412' }}>
+              {isCustomerUser ? 'Remaining payment required' : 'Waiting for remaining payment'}
+            </h2>
+            <p style={{ fontSize: 14, margin: '0 0 12px', color: '#7c2d12' }}>
+              Agreed price ₦{(job.agreedPrice || 0).toLocaleString()} · Already paid ₦{(job.amountPaid || 0).toLocaleString()}
+              {job.remainingVatAmount ? ` · Extra VAT ₦${Number(job.remainingVatAmount).toLocaleString()}` : ''}
+            </p>
+            <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 8, color: '#9a3412' }}>
+              Remaining: ₦{remainingBal.toLocaleString()}
+            </div>
+            <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>
+              Time left: {mm}:{ss}
+            </div>
+
+            {isCustomerUser && (
+              <>
+                <div style={{ background: '#fff', borderRadius: 8, padding: 12, marginBottom: 12, border: '1px solid #fed7aa' }}>
+                  <div style={{ fontSize: 12, color: '#78716c' }}>Bank</div>
+                  <div style={{ fontWeight: 700 }}>{bankDetails.bankName || '—'}</div>
+                  <div style={{ fontSize: 12, color: '#78716c', marginTop: 6 }}>Account name</div>
+                  <div style={{ fontWeight: 700 }}>{bankDetails.accountName || '—'}</div>
+                  <div style={{ fontSize: 12, color: '#78716c', marginTop: 6 }}>Account number</div>
+                  <div style={{ fontWeight: 800, letterSpacing: 1 }}>{bankDetails.accountNumber || '—'}</div>
+                </div>
+                {!job.remainingPaymentSubmitted ? (
+                  <>
+                    <input
+                      placeholder="Payment reference (optional)"
+                      value={remainingRef}
+                      onChange={(e) => setRemainingRef(e.target.value)}
+                      style={{ width: '100%', padding: 10, marginBottom: 10, borderRadius: 8, border: '1px solid #e7e5e4' }}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      disabled={remainingBusy}
+                      onClick={submitRemaining}
+                      style={{ width: '100%' }}
+                    >
+                      {remainingBusy ? 'Submitting…' : 'I have paid the remaining balance'}
+                    </button>
+                  </>
+                ) : (
+                  <p style={{ fontSize: 14, color: '#166534', fontWeight: 600 }}>
+                    Payment submitted — waiting for admin approval.
+                  </p>
+                )}
+              </>
+            )}
+
+            {user?.role === 'rider' && (
+              <>
+                <p style={{ fontSize: 14, marginBottom: 12 }}>
+                  {job.remainingPaymentSubmitted
+                    ? 'Customer submitted the remaining payment. Waiting for admin confirmation. Do not start the delivery yet.'
+                    : 'Customer must pay the remaining balance. Delivery is paused until admin approves.'}
+                </p>
+                {canDecline && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    disabled={remainingBusy}
+                    onClick={declineRemaining}
+                    style={{ width: '100%', borderColor: '#b91c1c', color: '#b91c1c' }}
+                  >
+                    Decline delivery
+                  </button>
+                )}
+              </>
+            )}
           </div>
         )}
 

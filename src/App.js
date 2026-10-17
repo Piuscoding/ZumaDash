@@ -1,4 +1,3 @@
-
 /** Pending rider/merchant applicants keep customer UX until admin approves */
 export function effectiveAppRole(user) {
   if (!user) return null;
@@ -49,7 +48,12 @@ import JobHistory from './pages/rider/JobHistory';
 
 // Admin Pages
 import AdminDashboard from './pages/admin/Dashboard';
+
+// Merchant Pages
 import MerchantDashboard from './pages/merchant/Dashboard';
+import BookSelf from './pages/merchant/BookSelf';
+import AddFleet from './pages/merchant/AddFleet';
+import RiderControls from './pages/merchant/RiderControls';
 
 // Shared
 import Notifications from './pages/Notifications';
@@ -118,6 +122,9 @@ function App() {
 
         {/* Merchant */}
         <Route path="/merchant" element={<PrivateRoute roles={['merchant']}><MerchantDashboard /></PrivateRoute>} />
+        <Route path="/merchant/book" element={<PrivateRoute roles={['merchant']}><BookSelf /></PrivateRoute>} />
+        <Route path="/merchant/add-fleet" element={<PrivateRoute roles={['merchant']}><AddFleet /></PrivateRoute>} />
+        <Route path="/merchant/riders/:id/controls" element={<PrivateRoute roles={['merchant']}><RiderControls /></PrivateRoute>} />
 
         {/* Shared authenticated */}
         <Route path="/notifications" element={<PrivateRoute><Notifications /></PrivateRoute>} />

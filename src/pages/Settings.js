@@ -261,6 +261,11 @@ const Settings = () => {
           )}
         </div>
 
+        {/* Corridor job blocks — independent riders only; fleet riders see read-only */}
+        {user?.role === 'rider' && (
+          <CorridorBlocksSection user={user} setUser={setUser} setMsg={setMsg} setErr={setErr} />
+        )}
+
         <div className="card" style={{ padding: 16 }}>
           <h2 style={{ fontSize: 16, marginBottom: 8 }}>Profile</h2>
           <p style={{ fontSize: 14, marginBottom: 8 }}>
@@ -274,5 +279,146 @@ const Settings = () => {
     </div>
   );
 };
+
+const CORRIDORS = [
+  { key: 'dutse', label: 'Dutse' },
+  { key: 'kubwa', label: 'Kubwa' },
+  { key: 'bwari', label: 'Bwari' },
+  { key: 'ushafa', label: 'Ushafa' },
+];
+
+function CorridorBlocksSection({ user, setUser, setMsg, setErr }) {
+  const isFleet = user?.riderType === 'fleet' || !!user?.merchantId;
+  const [blocks, setBlocks] = useState(
+    CORRIDORS.map((c) => ({ corridor: c.key, blocked: false, blockFromTime: '' }))
+  );
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const existing = Array.isArray(user?.corridorJobBlocks) ? user.corridorJobBlocks : [];
+    setBlocks(
+      CORRIDORS.map((c) => {
+        const hit = existing.find((b) => String(b.corridor).toLowerCase() === c.key);
+        return {
+          corridor: c.key,
+          blocked: hit ? !!hit.blocked : false,
+          blockFromTime: hit?.blockFromTime || '',
+        };
+      })
+    );
+  }, [user]);
+
+  const save = async () => {
+    if (isFleet) return;
+    setSaving(true);
+    setMsg('');
+    setErr('');
+    try {
+      const res = await api.put('/api/users/me', { corridorJobBlocks: blocks });
+      if (res.data.user) setUser(res.data.user);
+      setMsg('Corridor job blocks saved.');
+    } catch (e) {
+      setErr(e.response?.data?.message || 'Could not save corridor blocks');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="card" style={{ padding: 16, marginBottom: 16 }}>
+      <h2 style={{ fontSize: 16, marginBottom: 6 }}>Corridor job blocks</h2>
+      <p style={{ fontSize: 13, color: 'var(--gray-500)', marginBottom: 12 }}>
+        {isFleet
+          ? 'Your merchant controls which corridors you can receive jobs from. This section is read-only.'
+          : 'Turn off jobs from a corridor. Optional time (HH:mm) = block starts from that time until midnight; leave empty to block always.'}
+      </p>
+      {CORRIDORS.map((c, idx) => {
+        const b = blocks[idx];
+        return (
+          <div
+            key={c.key}
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              gap: 10,
+              padding: '10px 0',
+              borderBottom: '1px solid #f1f5f9',
+              opacity: isFleet ? 0.7 : 1,
+            }}
+          >
+            <div style={{ flex: '1 1 100px', fontWeight: 600, fontSize: 14 }}>{c.label}</div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={b.blocked}
+              disabled={isFleet}
+              onClick={() => {
+                if (isFleet) return;
+                setBlocks((prev) =>
+                  prev.map((x, i) => (i === idx ? { ...x, blocked: !x.blocked } : x))
+                );
+              }}
+              style={{
+                width: 44,
+                height: 26,
+                borderRadius: 999,
+                border: 'none',
+                background: b.blocked ? '#0f766e' : '#cbd5e1',
+                position: 'relative',
+                cursor: isFleet ? 'not-allowed' : 'pointer',
+              }}
+            >
+              <span
+                style={{
+                  position: 'absolute',
+                  top: 3,
+                  left: b.blocked ? 22 : 3,
+                  width: 20,
+                  height: 20,
+                  borderRadius: '50%',
+                  background: '#fff',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.2)',
+                  transition: 'left 0.2s',
+                }}
+              />
+            </button>
+            <span style={{ fontSize: 12, color: '#64748b', width: 60 }}>
+              {b.blocked ? 'Blocked' : 'Open'}
+            </span>
+            <input
+              type="time"
+              value={b.blockFromTime || ''}
+              disabled={isFleet || !b.blocked}
+              onChange={(e) =>
+                setBlocks((prev) =>
+                  prev.map((x, i) => (i === idx ? { ...x, blockFromTime: e.target.value } : x))
+                )
+              }
+              style={{
+                padding: '4px 6px',
+                borderRadius: 6,
+                border: '1px solid #e2e8f0',
+                fontSize: 13,
+                opacity: b.blocked && !isFleet ? 1 : 0.5,
+              }}
+            />
+          </div>
+        );
+      })}
+      {!isFleet && (
+        <button
+          type="button"
+          className="btn btn-primary"
+          style={{ marginTop: 14 }}
+          disabled={saving}
+          onClick={save}
+        >
+          {saving ? 'Saving…' : 'Save corridor blocks'}
+        </button>
+      )}
+    </div>
+  );
+}
 
 export default Settings;

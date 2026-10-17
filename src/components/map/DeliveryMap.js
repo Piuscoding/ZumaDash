@@ -141,7 +141,7 @@ const DeliveryMap = ({
         background: '#e5e7eb',
       }}
     >
-      <MapContainer
+      <MapContainer key={tile}
         center={center}
         zoom={13}
         style={{ height: '100%', width: '100%' }}
@@ -149,7 +149,7 @@ const DeliveryMap = ({
         attributionControl={false}
         zoomControl
       >
-        <TileLayer url={tile} />
+        <TileLayer url={tile} attribution="© OpenStreetMap / map data providers" />
         <InvalidateSize />
         <FitBounds positions={fitPositions} />
         <FollowRider riderLocation={riderLocation} />

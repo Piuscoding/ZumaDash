@@ -14,11 +14,13 @@ const emptyBike = () => ({
   videoUrl: '',
 });
 
-/** Merchant applies for additional fleet bikes — application type fixed as merchant/fleet */
+/** Merchant applies for additional fleet bikes — same collapsible UX as Become a rider (fleet) */
 const AddFleet = () => {
   const [numberOfBikes, setNumberOfBikes] = useState(1);
   const [bikes, setBikes] = useState([emptyBike()]);
+  const [collapsedBikes, setCollapsedBikes] = useState({});
   const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
 
@@ -40,21 +42,28 @@ const AddFleet = () => {
     });
   };
 
-  const uploadBikeFile = async (i, field, file, isDoc) => {
-    if (!file) return;
+  const uploadBikeFile = async (i, field, files, isDoc) => {
+    const list = Array.from(files || []);
+    if (!list.length) return;
+    setUploading(true);
+    setErr('');
     try {
-      const url = await uploadFile(file, isDoc ? 'zumadash/merchant/docs' : 'zumadash/merchant/bike');
-      setBikes((prev) => {
-        const next = [...prev];
-        if (field === 'photoUrls' || field === 'documentUrls') {
-          next[i] = { ...next[i], [field]: [...(next[i][field] || []), url] };
-        } else {
-          next[i] = { ...next[i], [field]: url };
-        }
-        return next;
-      });
+      for (const file of list) {
+        const url = await uploadFile(file, isDoc ? 'zumadash/merchant/docs' : 'zumadash/merchant/bike');
+        setBikes((prev) => {
+          const next = [...prev];
+          if (field === 'photoUrls' || field === 'documentUrls') {
+            next[i] = { ...next[i], [field]: [...(next[i][field] || []), url] };
+          } else {
+            next[i] = { ...next[i], [field]: url };
+          }
+          return next;
+        });
+      }
     } catch (e) {
       setErr(e.response?.data?.message || 'Upload failed');
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -71,14 +80,14 @@ const AddFleet = () => {
           return;
         }
       }
-      await api.post('/api/merchant/fleet-application', {
-        riderType: 'fleet',
+      await api.post('/api/merchant/add-fleet', {
         numberOfBikes,
         bikes: bikes.slice(0, numberOfBikes),
       });
       setMsg('Application submitted. Admin will review additional fleet bikes.');
       setBikes([emptyBike()]);
       setNumberOfBikes(1);
+      setCollapsedBikes({});
     } catch (e2) {
       setErr(e2.response?.data?.message || 'Submit failed');
     } finally {
@@ -90,43 +99,181 @@ const AddFleet = () => {
     <div style={{ minHeight: '100vh', background: 'var(--gray-50)' }}>
       <MerchantNavbar />
       <div className="container" style={{ maxWidth: 560, padding: '20px 16px' }}>
-        <Link to="/merchant" style={{ fontWeight: 600, color: 'var(--primary)' }}>← Dashboard</Link>
+        <Link to="/merchant" style={{ fontWeight: 600, color: 'var(--primary)' }}>
+          ← Dashboard
+        </Link>
         <div className="card" style={{ marginTop: 16, padding: 16 }}>
           <h1 style={{ fontSize: 20, marginBottom: 8 }}>Add more fleets</h1>
           <p style={{ fontSize: 13, color: 'var(--gray-500)', marginBottom: 16 }}>
-            Application type: <strong>Merchant / fleet</strong> (fixed). Submit extra bikes for admin approval.
+            Application type is fixed as <strong>Merchant / fleet</strong>. Enter how many bikes, then fill each bike
+            section (collapse when done).
           </p>
-          {msg && <p style={{ color: 'var(--success)' }}>{msg}</p>}
-          {err && <p style={{ color: 'var(--danger)' }}>{err}</p>}
+          {msg && <p style={{ color: 'var(--success)', marginBottom: 12 }}>{msg}</p>}
+          {err && <p style={{ color: 'var(--danger)', marginBottom: 12 }}>{err}</p>}
+          {uploading && (
+            <p style={{ color: '#075985', fontSize: 13, marginBottom: 12 }}>Uploading…</p>
+          )}
+
           <form onSubmit={submit}>
             <div className="form-group">
               <label>Application type</label>
-              <select disabled value="merchant" style={{ width: '100%', padding: 10, borderRadius: 8, opacity: 0.8 }}>
+              <select
+                disabled
+                value="merchant"
+                style={{ width: '100%', padding: 10, borderRadius: 8, opacity: 0.8 }}
+              >
                 <option value="merchant">Merchant / fleet</option>
               </select>
             </div>
+
             <div className="form-group">
               <label>Number of bikes</label>
-              <input type="number" min={1} max={20} value={numberOfBikes} onChange={(e) => setBikeCount(e.target.value)} />
+              <input
+                type="number"
+                min={1}
+                max={20}
+                value={numberOfBikes}
+                onChange={(e) => setBikeCount(e.target.value)}
+              />
             </div>
-            {bikes.slice(0, numberOfBikes).map((b, i) => (
-              <div key={i} style={{ marginBottom: 16, padding: 12, border: '1px solid var(--gray-200)', borderRadius: 10 }}>
-                <strong>Bike {i + 1}</strong>
-                <div className="form-group"><label>Plate</label><input required value={b.plateNumber} onChange={(e) => updateBike(i, 'plateNumber', e.target.value)} /></div>
-                <div className="form-group"><label>Model</label><input value={b.model} onChange={(e) => updateBike(i, 'model', e.target.value)} /></div>
-                <div className="form-group"><label>Color</label><input value={b.color} onChange={(e) => updateBike(i, 'color', e.target.value)} /></div>
-                <div className="form-group">
-                  <label>Photo</label>
-                  <input type="file" accept="image/*" onChange={(e) => uploadBikeFile(i, 'photoUrls', e.target.files?.[0], false)} />
+
+            {bikes.slice(0, numberOfBikes).map((bike, index) => (
+              <div
+                key={index}
+                style={{
+                  marginTop: 16,
+                  marginBottom: 8,
+                  padding: 16,
+                  border: '1px solid var(--gray-200)',
+                  borderRadius: 12,
+                  background: 'var(--gray-50)',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: collapsedBikes[index] ? 0 : 12,
+                  }}
+                >
+                  <h3 style={{ fontSize: 15, margin: 0 }}>
+                    Bike {index + 1}
+                    {bike.plateNumber ? ` · ${bike.plateNumber}` : ''}
+                  </h3>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ padding: '4px 10px', fontSize: 12 }}
+                    onClick={() =>
+                      setCollapsedBikes((c) => ({ ...c, [index]: !c[index] }))
+                    }
+                  >
+                    {collapsedBikes[index] ? 'Expand' : 'Collapse'}
+                  </button>
                 </div>
-                <div className="form-group">
-                  <label>Documents (PDF)</label>
-                  <input type="file" accept=".pdf,.doc,.docx,application/pdf" onChange={(e) => uploadBikeFile(i, 'documentUrls', e.target.files?.[0], true)} />
-                </div>
+
+                {collapsedBikes[index] ? (
+                  <p style={{ fontSize: 12, color: 'var(--gray-500)', margin: '8px 0 0' }}>
+                    {(bike.photoUrls || []).length} photo(s) · {(bike.documentUrls || []).length} doc(s)
+                    {bike.videoUrl ? ' · video' : ''} — tap Expand to edit
+                  </p>
+                ) : (
+                  <>
+                    <div className="form-group">
+                      <label>Label / name</label>
+                      <input
+                        value={bike.label}
+                        onChange={(e) => updateBike(index, 'label', e.target.value)}
+                        placeholder={`e.g. Unit ${index + 1}`}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Plate number *</label>
+                      <input
+                        required
+                        value={bike.plateNumber}
+                        onChange={(e) => updateBike(index, 'plateNumber', e.target.value)}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Model</label>
+                      <input
+                        value={bike.model}
+                        onChange={(e) => updateBike(index, 'model', e.target.value)}
+                        placeholder="e.g. Bajaj Boxer"
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Color</label>
+                      <input
+                        value={bike.color}
+                        onChange={(e) => updateBike(index, 'color', e.target.value)}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Photos (up to 5)</label>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        disabled={uploading}
+                        onChange={(e) => uploadBikeFile(index, 'photoUrls', e.target.files, false)}
+                      />
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+                        {(bike.photoUrls || []).map((u) => (
+                          <img
+                            key={u}
+                            src={u}
+                            alt=""
+                            style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 8 }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                    <div className="form-group">
+                      <label>Documents (PDF / DOC)</label>
+                      <input
+                        type="file"
+                        accept=".pdf,.doc,.docx,image/*"
+                        multiple
+                        disabled={uploading}
+                        onChange={(e) => uploadBikeFile(index, 'documentUrls', e.target.files, true)}
+                      />
+                      {(bike.documentUrls || []).length > 0 && (
+                        <p style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 4 }}>
+                          {(bike.documentUrls || []).length} file(s) attached
+                        </p>
+                      )}
+                    </div>
+                    <div className="form-group">
+                      <label>Bike video (optional)</label>
+                      <input
+                        type="file"
+                        accept="video/*"
+                        disabled={uploading}
+                        onChange={(e) => uploadBikeFile(index, 'videoUrl', e.target.files, false)}
+                      />
+                      {bike.videoUrl && (
+                        <video
+                          src={bike.videoUrl}
+                          controls
+                          style={{ width: '100%', marginTop: 8, borderRadius: 8, maxHeight: 200 }}
+                        />
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             ))}
-            <button className="btn btn-primary" type="submit" disabled={loading} style={{ width: '100%' }}>
-              {loading ? 'Submitting…' : 'Submit for approval'}
+
+            <button
+              className="btn btn-primary"
+              type="submit"
+              disabled={loading || uploading}
+              style={{ width: '100%', marginTop: 16 }}
+            >
+              {loading ? 'Submitting…' : 'Submit additional fleet application'}
             </button>
           </form>
         </div>
