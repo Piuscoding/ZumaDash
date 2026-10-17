@@ -414,6 +414,22 @@ const MerchantDashboard = () => {
 
         {tab === 'riders' && (
           <div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+              <Link to="/merchant/book" className="btn btn-primary" style={{ padding: '8px 12px', fontSize: 13 }}>Book own goods</Link>
+              <Link to="/merchant/add-fleet" className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: 13 }}>Add more fleets</Link>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12, marginBottom: 16 }}>
+              {(riders || []).map((r) => (
+                <Link key={`ctl-${r._id}`} to={`/merchant/riders/${r._id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                  <div className="card" style={{ padding: 14, cursor: 'pointer' }}>
+                    <strong>{r.name}</strong>
+                    <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>{r.email}</div>
+                    <div style={{ fontSize: 11, color: 'var(--primary)', marginTop: 6 }}>Open controls →</div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+
             <div className="card" style={{ marginBottom: 20 }}>
               <h3 style={{ fontSize: 16, marginBottom: 12 }}>Add rider</h3>
               <form onSubmit={createRider}>

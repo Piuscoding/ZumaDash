@@ -13,6 +13,8 @@ const MerchantNavbar = () => {
 
   const mobileLinks = [
     { to: '/merchant', label: 'Dashboard' },
+    { to: '/merchant/book', label: 'Book delivery' },
+    { to: '/merchant/add-fleet', label: 'Add fleets' },
     { to: '/support', label: 'Support' },
     { to: '/settings', label: 'Settings' },
     { to: '/profile', label: 'Profile' },
@@ -29,6 +31,8 @@ const MerchantNavbar = () => {
 
         <div className="hidden md:flex items-center gap-4 text-sm font-medium">
           <Link to="/merchant" className="text-white/90 hover:text-white">Dashboard</Link>
+          <Link to="/merchant/book" style={{ color: "inherit", textDecoration: "none", marginRight: 12 }}>Book delivery</Link>
+          <Link to="/merchant/add-fleet" style={{ color: "inherit", textDecoration: "none", marginRight: 12 }}>Add fleets</Link>
           <Link to="/support" className="text-white/90 hover:text-white">Support</Link>
           <Link to="/settings" className="text-white/90 hover:text-white">Settings</Link>
           <Link to="/profile" className="text-white/90 hover:text-white">Profile</Link>

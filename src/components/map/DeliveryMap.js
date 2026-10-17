@@ -16,10 +16,11 @@ L.Icon.Default.mergeOptions({
 const OSM_TILE = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
 
 function resolveTile(tileUrl) {
-  if (!tileUrl || String(tileUrl).includes('cartocdn') || String(tileUrl).includes('apikey') || String(tileUrl).includes('mapbox')) {
-    return 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+  const u = String(tileUrl || '');
+  if (!u || u.includes('cartocdn') || u.includes('mapbox')) {
+    return OSM_TILE;
   }
-  return tileUrl;
+  return u;
 }
 
 function geoToLatLng(geometry) {

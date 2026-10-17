@@ -37,6 +37,8 @@ const AdminDashboard = () => {
   const [priceBands, setPriceBands] = useState(null);
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [mapBookingEnabled, setMapBookingEnabled] = useState(false);
+  const [mapStackDefault, setMapStackDefault] = useState('tomtom_osrm_hybrid');
+  const [merchantSelfDeliveryCommissionPercent, setMerchantSelfDeliveryCommissionPercent] = useState(7.5);
   const [etaCalibration, setEtaCalibration] = useState(1.75);
   const [mapPricing, setMapPricing] = useState({ baseFare: 500, ratePerKm: 200, includedKm: 2, minimumFare: 800 });
   const [vatPercent, setVatPercent] = useState(0);
@@ -145,6 +147,10 @@ const AdminDashboard = () => {
         if (s.logoUrl || s.platformLogo) setLogoUrl(s.logoUrl || s.platformLogo || '');
         if (s.priceBands) setPriceBands(JSON.parse(JSON.stringify(s.priceBands)));
         setMapBookingEnabled(!!s.mapBookingEnabled);
+        setMapStackDefault(s.mapStackDefault === 'tomtom_full' ? 'tomtom_full' : 'tomtom_osrm_hybrid');
+        setMerchantSelfDeliveryCommissionPercent(
+          s.merchantOwnGoodsCommissionPercent ?? s.merchantSelfDeliveryCommissionPercent ?? 7.5
+        );
         if (s.etaCalibration != null) setEtaCalibration(s.etaCalibration);
         if (s.mapPricing) setMapPricing({
           baseFare: s.mapPricing.baseFare ?? 500,
@@ -533,6 +539,8 @@ const AdminDashboard = () => {
         platformLogo: logoUrl,
         priceBands,
         mapBookingEnabled,
+        mapStackDefault,
+        merchantOwnGoodsCommissionPercent: Number(merchantSelfDeliveryCommissionPercent) || 7.5,
         etaCalibration: Number(etaCalibration),
         mapPricing,
         vatPercent: Number(vatPercent) || 0,
@@ -1516,11 +1524,40 @@ const AdminDashboard = () => {
                   <div className="form-group"><label>Account number</label><input value={bankForm.accountNumber} onChange={(e) => setBankForm({ ...bankForm, accountNumber: e.target.value })} required /></div>
                   <div className="form-group"><label>Commission %</label><input type="number" min={1} max={40} value={commissionPct} onChange={(e) => setCommissionPct(e.target.value)} /></div>
                   <hr style={{ margin: '16px 0', border: 'none', borderTop: '1px solid var(--gray-200)' }} />
-                  <h3 style={{ fontSize: 15, marginBottom: 12 }}>Map booking (OSRM)</h3>
+                  <h3 style={{ fontSize: 15, marginBottom: 12 }}>Map stack</h3>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, marginBottom: 12 }}>
                     <input type="checkbox" checked={mapBookingEnabled} onChange={(e) => setMapBookingEnabled(e.target.checked)} />
                     Enable map booking (when OFF, all new jobs are text mode)
                   </label>
+                  <div className="form-group" style={{ marginTop: 8 }}>
+                    <label>Map stack default</label>
+                    <select
+                      value={mapStackDefault}
+                      onChange={(e) => setMapStackDefault(e.target.value)}
+                      style={{ width: '100%', padding: 10, borderRadius: 8 }}
+                    >
+                      <option value="tomtom_osrm_hybrid">TomTom visual + OSRM routing (tomtom_osrm_hybrid)</option>
+                      <option value="tomtom_full">TomTom full — tiles + search + TomTom routing (tomtom_full)</option>
+                    </select>
+                    <p style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 6 }}>
+                      Full: TomTom draws the map, search, and calculates road distance/route.
+                      Hybrid: TomTom draws the map and search; distance/route use local OSRM (better control for motorcycle-style paths; lower TomTom routing cost).
+                    </p>
+                  </div>
+                  <div className="form-group" style={{ marginTop: 12 }}>
+                    <label>Merchant own-goods commission %</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min={0}
+                      max={100}
+                      value={merchantSelfDeliveryCommissionPercent}
+                      onChange={(e) => setMerchantSelfDeliveryCommissionPercent(e.target.value)}
+                    />
+                    <p style={{ fontSize: 12, color: 'var(--gray-500)' }}>
+                      Default 7.5% when merchants book delivery of their own goods (plus VAT if set). Per-merchant override available on merchant commission fields.
+                    </p>
+                  </div>
                   <div className="form-group"><label>ETA calibration (1.5–2.0)</label>
                     <input type="number" min={1.5} max={2} step={0.05} value={etaCalibration} onChange={(e) => setEtaCalibration(e.target.value)} />
                   </div>

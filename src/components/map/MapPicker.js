@@ -16,10 +16,12 @@ L.Icon.Default.mergeOptions({
 const OSM_TILE = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
 
 function resolveTile(tileUrl) {
-  if (!tileUrl || String(tileUrl).includes('cartocdn') || String(tileUrl).includes('apikey') || String(tileUrl).includes('mapbox')) {
+  const u = String(tileUrl || '');
+  // Prefer server-provided TomTom (or other) template; only strip known-broken providers
+  if (!u || u.includes('cartocdn') || u.includes('mapbox')) {
     return 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
   }
-  return tileUrl;
+  return u;
 }
 
 const defaultIcon = new L.Icon({
