@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useI18n } from '../../context/I18nContext';
 import RoleNavbar from '../../components/RoleNavbar';
@@ -29,6 +29,7 @@ const TrackDelivery = () => {
     return translated === key ? String(s).replace(/_/g, ' ') : translated;
   };
   const { id } = useParams();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [job, setJob] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -55,8 +56,20 @@ const TrackDelivery = () => {
     try {
       const res = await api.get(`/api/jobs/${id}`);
       setJob(res.data.job);
+      setError('');
     } catch (err) {
-      setError(err.response?.data?.message || 'Could not load job');
+      const status = err.response?.status;
+      const msg = err.response?.data?.message || 'Could not load job';
+      if (status === 403) {
+        setError(
+          msg === 'Not authorized'
+            ? 'You no longer have access to this delivery (it may have been declined or reassigned).'
+            : msg
+        );
+      } else {
+        setError(msg);
+      }
+      setJob(null);
     } finally {
       setLoading(false);
     }
@@ -281,7 +294,22 @@ const TrackDelivery = () => {
   };
 
   if (loading) return <div style={{ padding: 40, textAlign: 'center' }}>Loading...</div>;
-  if (error) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--danger)' }}>{error}</div>;
+  if (error) {
+    return (
+      <div style={{ minHeight: '100vh', background: 'var(--gray-50)' }}>
+        <RoleNavbar />
+        <div style={{ padding: 40, textAlign: 'center', maxWidth: 420, margin: '0 auto' }}>
+          <p style={{ color: 'var(--danger)', marginBottom: 16 }}>{error}</p>
+          <Link
+            to={user?.role === 'rider' ? '/rider' : user?.role === 'admin' || user?.role === 'manager' ? '/admin' : '/my-deliveries'}
+            style={{ color: 'var(--primary)', fontWeight: 700 }}
+          >
+            ← Back to dashboard
+          </Link>
+        </div>
+      </div>
+    );
+  }
   if (!job) return null;
 
   const currentIdx = statusSteps.indexOf(job.status);
@@ -367,12 +395,12 @@ const TrackDelivery = () => {
   const declineRemaining = async () => {
     setRemainingBusy(true);
     try {
-      await api.post(`/api/jobs/${job._id}/decline-remaining`);
-      setMessage('You declined this job.');
-      fetchJob();
+      const res = await api.post(`/api/jobs/${job._id}/decline-remaining`);
+      const msg = res.data?.message || 'You declined this job. You may accept another delivery.';
+      // Rider is no longer assigned — leave track page (avoids "Not authorized" empty screen)
+      navigate('/rider', { replace: true, state: { flash: msg } });
     } catch (e) {
       setMessage(e.response?.data?.message || 'Could not decline');
-    } finally {
       setRemainingBusy(false);
     }
   };
