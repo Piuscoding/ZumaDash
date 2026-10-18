@@ -908,7 +908,7 @@ const AdminDashboard = () => {
                   <div key={j._id} className="card" style={{ padding: 12, marginBottom: 8 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}><strong>{j.jobId}</strong><span className="badge badge-info">{j.status}</span></div>
                     <div style={{ fontSize: 13, color: 'var(--gray-500)' }}>{j.customer?.name} → {j.rider?.name || '—'}</div>
-                    <div style={{ fontSize: 12 }}>₦{(j.agreedPrice || j.suggestedPrice || 0).toLocaleString()} · {j.paymentMethod || '—'}</div>
+                    <div style={{ fontSize: 12 }}>₦{(j.amountDue != null ? j.amountDue : (j.agreedPrice || j.suggestedPrice || 0)).toLocaleString()}{j.merchantSelfBooking ? ' (platform fee)' : ''} · {j.paymentMethod || '—'}</div>
                     <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                       <button className="btn btn-primary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => openJobTimeline(j._id)}>View details</button>
                       <button className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => freezeJob(j._id, !j.isFrozen)}>{j.isFrozen ? 'Unfreeze' : 'Freeze'}</button>

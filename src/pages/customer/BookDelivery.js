@@ -938,7 +938,24 @@ const BookDelivery = ({ adminMode = false } = {}) => {
               </div>
               <div className="form-group">
                 <label>Suggested Price (₦)</label>
-                <input type="number" name="suggestedPrice" value={form.suggestedPrice} onChange={handleChange} min={500} />
+                <input
+                  type="number"
+                  name="suggestedPrice"
+                  value={form.suggestedPrice}
+                  onChange={(e) => {
+                    if (adminMode) {
+                      handleChange(e);
+                      return;
+                    }
+                    const v = Number(e.target.value);
+                    if (bookingMode !== 'map' && !Number.isNaN(v) && v < 1500) {
+                      setForm((f) => ({ ...f, suggestedPrice: 1500 }));
+                      return;
+                    }
+                    handleChange(e);
+                  }}
+                  min={adminMode ? 500 : 1500}
+                />
                 <small style={{ color: 'var(--gray-500)', fontSize: 12 }}>
                   {bookingMode === 'map' && mapQuote?.locationMode === 'map'
                     ? 'Suggested from map distance. You can adjust; riders can still offer.'

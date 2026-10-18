@@ -39,6 +39,7 @@ const BookSelf = () => {
     accountNumber: '',
     bankName: '',
   });
+  const [ownGoodsRates, setOwnGoodsRates] = useState({ commissionPct: 7.5, vatPct: 0 });
   const [paymentConfirmed, setPaymentConfirmed] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -83,7 +84,8 @@ const BookSelf = () => {
     api
       .get('/api/settings')
       .then((r) => {
-        const bd = r.data.settings?.bankDetails || r.data.bankDetails;
+        const s = r.data.settings || r.data || {};
+        const bd = s.bankDetails;
         if (bd) {
           setBankDetails({
             accountName: bd.accountName || '',
@@ -91,6 +93,14 @@ const BookSelf = () => {
             bankName: bd.bankName || '',
           });
         }
+        const cPct =
+          s.allMerchantsOwnGoodsCommissionPercent != null
+            ? Number(s.allMerchantsOwnGoodsCommissionPercent)
+            : s.merchantOwnGoodsCommissionPercent != null
+              ? Number(s.merchantOwnGoodsCommissionPercent)
+              : 7.5;
+        const vPct = s.vatPercent != null ? Number(s.vatPercent) : 0;
+        setOwnGoodsRates({ commissionPct: cPct, vatPct: vPct });
       })
       .catch(() => {});
   }, []);
@@ -299,6 +309,10 @@ const BookSelf = () => {
       return;
     }
     if (!addressesValid()) return;
+    if (!pickupMatchesProfile) {
+      setError('Pickup address must match your profile address');
+      return;
+    }
     setStep(2);
   };
 
@@ -360,6 +374,14 @@ const BookSelf = () => {
   };
 
   const tileUrl = mapConfig.mapTileUrl || '';
+  const priceBase = Math.max(1500, Number(form.suggestedPrice) || 1500);
+  const commissionAmt = Math.round((priceBase * (ownGoodsRates.commissionPct || 0)) / 100);
+  const vatAmt = Math.round((priceBase * (ownGoodsRates.vatPct || 0)) / 100);
+  const platformTakeAmount = commissionAmt + vatAmt;
+  const profileAddr = String(user?.address || '').trim().toLowerCase();
+  const pickupMatchesProfile =
+    !profileAddr || String(form.pickupDescription || '').trim().toLowerCase() === profileAddr;
+
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--gray-50)' }}>
@@ -599,8 +621,12 @@ const BookSelf = () => {
                     background: bookingMode === 'text' ? '#f1f5f9' : undefined,
                   }}
                 />
-                <span style={{ fontSize: 11, color: 'var(--gray-500)' }}>
-                  {bookingMode === 'text' ? 'Locked to your profile address' : CORRIDOR_HINT}
+                <span style={{ fontSize: 11, color: bookingMode === 'text' || pickupMatchesProfile ? 'var(--gray-500)' : 'var(--danger)' }}>
+                  {bookingMode === 'text'
+                    ? 'Locked to your profile address'
+                    : pickupMatchesProfile
+                      ? 'Must match your profile address'
+                      : 'Pickup must match your profile address'}
                 </span>
               </div>
 
@@ -678,7 +704,8 @@ const BookSelf = () => {
                   !form.pickupDescription ||
                   !form.dropoffDescription ||
                   !hasCorridor(form.pickupDescription) ||
-                  !hasCorridor(form.dropoffDescription)
+                  !hasCorridor(form.dropoffDescription) ||
+                  !pickupMatchesProfile
                 }
                 onClick={goNextFromStep1}
               >
@@ -837,10 +864,6 @@ const BookSelf = () => {
 
           {step === 3 && form.paymentMethod === 'bank_transfer' && (
             <>
-              <p style={{ fontSize: 14, marginBottom: 12 }}>
-                Transfer <strong>₦{Number(form.suggestedPrice).toLocaleString()}</strong> to the
-                account below.
-              </p>
               <div
                 style={{
                   background: '#f8fafc',
@@ -869,17 +892,17 @@ const BookSelf = () => {
                 <div>
                   <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Amount</div>
                   <div style={{ fontSize: 18, fontWeight: 800 }}>
-                    ₦{Number(form.suggestedPrice).toLocaleString()}
+                    ₦{platformTakeAmount.toLocaleString()}
                   </div>
                 </div>
               </div>
 
               <div className="form-group">
-                <label>Payment reference / note (optional)</label>
+                <label>Payment reference (optional)</label>
                 <input
                   value={form.paymentReference}
                   onChange={(e) => setForm({ ...form, paymentReference: e.target.value })}
-                  placeholder="e.g. transfer ID or name used"
+                  placeholder="Transfer reference"
                 />
               </div>
 
@@ -900,9 +923,7 @@ const BookSelf = () => {
                   style={{ marginTop: 3, width: 18, height: 18 }}
                 />
                 <span>
-                  I confirm I have transferred ₦{Number(form.suggestedPrice).toLocaleString()} to
-                  the account above. The job will wait for admin approval; only the assigned rider
-                  will be notified.
+                  I confirm I transferred ₦{platformTakeAmount.toLocaleString()} to this account.
                 </span>
               </label>
 
