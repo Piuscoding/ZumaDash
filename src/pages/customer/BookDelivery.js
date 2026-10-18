@@ -70,6 +70,7 @@ const BookDelivery = ({ adminMode = false } = {}) => {
   const [bookingMode, setBookingMode] = useState('text'); // 'map' | 'text'
   const [activeField, setActiveField] = useState('pickup'); // which field search/map fills
   const [searchQuery, setSearchQuery] = useState('');
+  const [mapFullscreen, setMapFullscreen] = useState(false);
   const [suggestions, setSuggestions] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState('');
@@ -143,43 +144,54 @@ const BookDelivery = ({ adminMode = false } = {}) => {
 
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
-  const requestMapQuote = async (pPin, dPin, size) => {
-    if (!pPin || !dPin || !mapConfig.mapBookingEnabled) {
+  const requestMapQuote = useCallback(async (pPin, dPin, size) => {
+    if (!pPin || !dPin) {
       setMapQuote(null);
       return;
     }
     setQuoteLoading(true);
     try {
       const res = await api.post('/api/map/quote', {
-        pickupLat: pPin.lat,
-        pickupLng: pPin.lng,
-        dropLat: dPin.lat,
-        dropLng: dPin.lng,
+        pickupLat: Number(pPin.lat),
+        pickupLng: Number(pPin.lng),
+        dropLat: Number(dPin.lat),
+        dropLng: Number(dPin.lng),
         packageSize: size || form.packageSize,
       });
-      setMapQuote(res.data);
-      if (res.data.locationMode === 'map' && res.data.suggestedPrice) {
-        setForm((f) => ({ ...f, suggestedPrice: res.data.suggestedPrice }));
+      const data = res.data || {};
+      // Normalize: some proxies wrap payload
+      const payload = data.locationMode ? data : (data.data || data);
+      setMapQuote(payload);
+      if (payload.locationMode === 'map' && payload.suggestedPrice != null) {
+        setForm((f) => ({ ...f, suggestedPrice: payload.suggestedPrice }));
       }
-    } catch (_) {
-      setMapQuote({ locationMode: 'text' });
+    } catch (err) {
+      const msg = err.response?.data?.message || err.message || 'Quote failed';
+      setMapQuote({ locationMode: 'text', message: msg, success: false });
     } finally {
       setQuoteLoading(false);
     }
-  };
+  }, [form.packageSize]);
+
+  // Whenever both pins exist in map mode, fetch route + admin price formula
+  useEffect(() => {
+    if (bookingMode !== 'map') return;
+    if (!pickupPin || !dropPin) return;
+    requestMapQuote(pickupPin, dropPin, form.packageSize);
+  }, [bookingMode, pickupPin, dropPin, form.packageSize, requestMapQuote]);
 
   const applyPin = useCallback((field, pin, description) => {
+    if (!pin || pin.lat == null || pin.lng == null) return;
+    const normalized = { lat: Number(pin.lat), lng: Number(pin.lng) };
     if (field === 'pickup') {
-      setPickupPin(pin);
+      setPickupPin(normalized);
       if (description) setForm((f) => ({ ...f, pickupDescription: description }));
-      requestMapQuote(pin, dropPin, form.packageSize);
     } else {
-      setDropPin(pin);
+      setDropPin(normalized);
       if (description) setForm((f) => ({ ...f, dropoffDescription: description }));
-      requestMapQuote(pickupPin, pin, form.packageSize);
     }
-    setFlyTarget(pin);
-  }, [dropPin, pickupPin, form.packageSize]);
+    setFlyTarget(normalized);
+  }, []);
 
   // Map click → pin for active field + reverse geocode into textarea
   const onMapPick = async (field, pin) => {
@@ -738,6 +750,11 @@ const BookDelivery = ({ adminMode = false } = {}) => {
                     )}
                   </div>
 
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+                    <button type="button" className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: 12 }} onClick={() => setMapFullscreen(true)}>
+                      Fullscreen map
+                    </button>
+                  </div>
                   <MapPicker
                     pickup={pickupPin}
                     dropoff={dropPin}
@@ -749,16 +766,39 @@ const BookDelivery = ({ adminMode = false } = {}) => {
                     label="Map — tap to place pin for the active field"
                   />
 
-                  {quoteLoading && <p style={{ fontSize: 12, marginTop: 8 }}>Getting route from OSRM…</p>}
-                  {mapQuote?.locationMode === 'map' && (
-                    <p style={{ fontSize: 13, marginTop: 8, color: 'var(--primary)', fontWeight: 600 }}>
-                      Map mode · {mapQuote.mapDistanceKm} km · ETA ~{Math.round((mapQuote.displayDurationSec || 0) / 60)} min · suggested ₦{(mapQuote.suggestedPrice || 0).toLocaleString()}
+                  {(pickupPin || dropPin) && (
+                    <p style={{ fontSize: 12, marginTop: 8, color: 'var(--gray-600)' }}>
+                      {pickupPin ? 'Pickup pin set' : 'Pickup pin missing'}
+                      {' · '}
+                      {dropPin ? 'Drop-off pin set' : 'Drop-off pin missing'}
+                      {quoteLoading ? ' · calculating price…' : ''}
                     </p>
                   )}
-                  {mapQuote && mapQuote.locationMode !== 'map' && (pickupPin || dropPin) && (
-                    <p style={{ fontSize: 12, marginTop: 8, color: 'var(--gray-500)' }}>
-                      {mapQuote.message || 'Pins incomplete or outside corridor — will use text pricing.'}
-                    </p>
+                  {quoteLoading && (
+                    <p style={{ fontSize: 12, marginTop: 8, fontWeight: 600 }}>Calculating route &amp; price…</p>
+                  )}
+                  {!quoteLoading && mapQuote?.locationMode === 'map' && (
+                    <div style={{ marginTop: 10, padding: '12px 14px', borderRadius: 10, background: '#ecfdf5', border: '1px solid #6ee7b7' }}>
+                      <p style={{ fontSize: 14, margin: 0, color: '#065f46', fontWeight: 600, lineHeight: 1.5 }}>
+                        Delivery route:{' '}
+                        {Number(mapQuote.mapDistanceKm || 0).toFixed(2)} km
+                        {mapQuote.displayDurationSec
+                          ? ` · ETA ~${Math.round((mapQuote.displayDurationSec || 0) / 60)} min`
+                          : ''}
+                        {' · '}
+                        <span style={{ fontWeight: 800 }}>₦{Number(mapQuote.suggestedPrice || 0).toLocaleString()}</span>
+                      </p>
+                    </div>
+                  )}
+                  {!quoteLoading && mapQuote && mapQuote.locationMode !== 'map' && pickupPin && dropPin && (
+                    <div style={{ marginTop: 10, padding: 12, borderRadius: 10, background: '#fff7ed', border: '1px solid #fdba74', fontSize: 13, color: '#9a3412' }}>
+                      {mapQuote.message || 'Could not get map price for these pins (outside corridor or routing unavailable). Use text pricing or move pins.'}
+                    </div>
+                  )}
+                  {!quoteLoading && !mapQuote && pickupPin && dropPin && (
+                    <div style={{ marginTop: 10, padding: 12, borderRadius: 10, background: '#fef2f2', border: '1px solid #fca5a5', fontSize: 13, color: '#991b1b' }}>
+                      No quote returned. Check that the backend is running and /api/map/quote succeeds in Network tab.
+                    </div>
                   )}
                 </div>
               )}
@@ -899,7 +939,11 @@ const BookDelivery = ({ adminMode = false } = {}) => {
               <div className="form-group">
                 <label>Suggested Price (₦)</label>
                 <input type="number" name="suggestedPrice" value={form.suggestedPrice} onChange={handleChange} min={500} />
-                <small style={{ color: 'var(--gray-500)', fontSize: 12 }}>Riders can make offers.</small>
+                <small style={{ color: 'var(--gray-500)', fontSize: 12 }}>
+                  {bookingMode === 'map' && mapQuote?.locationMode === 'map'
+                    ? 'Suggested from map distance. You can adjust; riders can still offer.'
+                    : 'Riders can make offers.'}
+                </small>
               </div>
               <div className="form-group">
                 <label>Payment Method</label>
@@ -1016,6 +1060,33 @@ const BookDelivery = ({ adminMode = false } = {}) => {
           )}
         </div>
       </div>
+
+      {mapFullscreen && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: '#0f172a' }}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            style={{ position: 'absolute', top: 12, right: 12, zIndex: 10000 }}
+            onClick={() => setMapFullscreen(false)}
+          >
+            Close map
+          </button>
+          <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 10000, display: 'flex', gap: 8 }}>
+            <button type="button" className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => setActiveField('pickup')}>Pickup</button>
+            <button type="button" className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => setActiveField('dropoff')}>Drop-off</button>
+          </div>
+          <MapPicker
+            pickup={pickupPin}
+            dropoff={dropPin}
+            activeField={activeField}
+            onPick={onMapPick}
+            flyTarget={flyTarget}
+            tileUrl={mapTileUrl || mapConfig.mapTileUrl || ''}
+            height="100vh"
+            label=""
+          />
+        </div>
+      )}
     </div>
   );
 };

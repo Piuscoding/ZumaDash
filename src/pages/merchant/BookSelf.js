@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import MerchantNavbar from '../../components/MerchantNavbar';
@@ -14,10 +14,11 @@ function hasCorridor(text) {
   return ['dutse', 'kubwa', 'bwari', 'ushafa'].some((c) => t.includes(c));
 }
 
-/** Merchant books own goods — multi-step replica of customer BookDelivery + assign fleet rider */
+/** Merchant books own goods — multi-step like customer BookDelivery + assign fleet rider */
 const BookSelf = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const searchTimer = useRef(null);
 
   const [step, setStep] = useState(1);
   const [riders, setRiders] = useState([]);
@@ -28,6 +29,11 @@ const BookSelf = () => {
   const [dropPin, setDropPin] = useState(null);
   const [mapQuote, setMapQuote] = useState(null);
   const [activeField, setActiveField] = useState('pickup');
+  const [flyTarget, setFlyTarget] = useState(null);
+  const [mapFullscreen, setMapFullscreen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
+  const [searchError, setSearchError] = useState('');
   const [bankDetails, setBankDetails] = useState({
     accountName: '',
     accountNumber: '',
@@ -37,6 +43,8 @@ const BookSelf = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [mediaRecorder, setMediaRecorder] = useState(null);
 
   const [form, setForm] = useState({
     pickupDescription: '',
@@ -65,17 +73,24 @@ const BookSelf = () => {
     api
       .get('/api/map/config')
       .then((r) => {
+        const tile = r.data.mapTileUrl || r.data.tileUrl || '';
         setMapConfig({
           mapBookingEnabled: !!r.data.mapBookingEnabled,
-          mapTileUrl: r.data.mapTileUrl || r.data.tileUrl || '',
+          mapTileUrl: tile,
         });
       })
       .catch(() => {});
     api
-      .get('/api/settings/public')
+      .get('/api/settings')
       .then((r) => {
         const bd = r.data.settings?.bankDetails || r.data.bankDetails;
-        if (bd) setBankDetails(bd);
+        if (bd) {
+          setBankDetails({
+            accountName: bd.accountName || '',
+            accountNumber: bd.accountNumber || '',
+            bankName: bd.bankName || '',
+          });
+        }
       })
       .catch(() => {});
   }, []);
@@ -124,13 +139,63 @@ const BookSelf = () => {
     }
   }, [pickupPin, dropPin, form.packageSize, bookingMode, requestMapQuote]);
 
-  const onMapPick = (field, latlng) => {
+  const runSearch = async (q) => {
+    const query = String(q || '').trim();
+    if (query.length < 2) {
+      setSuggestions([]);
+      return;
+    }
+    try {
+      setSearchError('');
+      const res = await api.get('/api/map/search', { params: { q: query } });
+      setSuggestions(res.data.results || []);
+    } catch (e) {
+      setSuggestions([]);
+      setSearchError(e.response?.data?.message || 'Search unavailable');
+    }
+  };
+
+  const onSearchChange = (e) => {
+    const q = e.target.value;
+    setSearchQuery(q);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => runSearch(q), 400);
+  };
+
+  const applySuggestion = (s) => {
+    const pin = { lat: s.lat, lng: s.lng };
+    setFlyTarget(pin);
+    if (activeField === 'pickup') {
+      setPickupPin(pin);
+      setForm((f) => ({ ...f, pickupDescription: s.displayName || f.pickupDescription }));
+    } else {
+      setDropPin(pin);
+      setForm((f) => ({ ...f, dropoffDescription: s.displayName || f.dropoffDescription }));
+    }
+    setSuggestions([]);
+    setSearchQuery('');
+  };
+
+  const onMapPick = async (field, latlng) => {
     if (field === 'pickup') {
       setPickupPin(latlng);
       setActiveField('dropoff');
     } else {
       setDropPin(latlng);
     }
+    setFlyTarget(latlng);
+    try {
+      const res = await api.get('/api/map/reverse', {
+        params: { lat: latlng.lat, lng: latlng.lng },
+      });
+      if (res.data?.displayName) {
+        if (field === 'pickup') {
+          setForm((f) => ({ ...f, pickupDescription: res.data.displayName }));
+        } else {
+          setForm((f) => ({ ...f, dropoffDescription: res.data.displayName }));
+        }
+      }
+    } catch (_) {}
   };
 
   const handleMediaFile = async (e, field, kind) => {
@@ -140,8 +205,14 @@ const BookSelf = () => {
     setError('');
     try {
       let url;
-      if (kind === 'image') url = await uploadImage(file, 'zumadash/jobs');
-      else url = await uploadFile(file, 'zumadash/jobs');
+      if (kind === 'image') {
+        url = await uploadImage(
+          file,
+          field === 'pickupPhotos' ? 'zumadash/pickup' : 'zumadash/dropoff'
+        );
+      } else {
+        url = await uploadFile(file, `zumadash/booking/${kind}`);
+      }
       if (field === 'pickupPhotos' || field === 'dropoffPhotos') {
         setForm((f) => ({ ...f, [field]: [...(f[field] || []), url] }));
       } else {
@@ -153,6 +224,49 @@ const BookSelf = () => {
       setUploading(false);
       e.target.value = '';
     }
+  };
+
+  const startVoiceRecord = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const rec = new MediaRecorder(stream);
+      const chunks = [];
+      rec.ondataavailable = (e) => {
+        if (e.data.size) chunks.push(e.data);
+      };
+      rec.onstop = async () => {
+        stream.getTracks().forEach((tr) => tr.stop());
+        const blob = new Blob(chunks, { type: 'audio/webm' });
+        const localUrl = URL.createObjectURL(blob);
+        setForm((f) => ({ ...f, bookingVoiceNote: localUrl }));
+        const file = new File([blob], `voice-${Date.now()}.webm`, { type: 'audio/webm' });
+        try {
+          setUploading(true);
+          const url = await uploadFile(file, 'zumadash/booking/voice');
+          if (url && typeof url === 'string') {
+            try {
+              URL.revokeObjectURL(localUrl);
+            } catch (_) {}
+            setForm((f) => ({ ...f, bookingVoiceNote: url }));
+          }
+        } catch (err) {
+          console.error(err);
+        } finally {
+          setUploading(false);
+        }
+      };
+      rec.start();
+      setMediaRecorder(rec);
+      setIsRecording(true);
+    } catch (err) {
+      alert('Microphone permission is required to record a voice note.');
+    }
+  };
+
+  const stopVoiceRecord = () => {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+    setIsRecording(false);
+    setMediaRecorder(null);
   };
 
   const addressesValid = () => {
@@ -245,6 +359,8 @@ const BookSelf = () => {
     }
   };
 
+  const tileUrl = mapConfig.mapTileUrl || '';
+
   return (
     <div style={{ minHeight: '100vh', background: 'var(--gray-50)' }}>
       <MerchantNavbar />
@@ -305,11 +421,6 @@ const BookSelf = () => {
                     </option>
                   ))}
                 </select>
-                {riders.length === 0 && (
-                  <small style={{ color: 'var(--danger)', fontSize: 12 }}>
-                    No available riders. Create a rider and ensure they are not suspended.
-                  </small>
-                )}
               </div>
 
               {mapConfig.mapBookingEnabled && (
@@ -360,7 +471,8 @@ const BookSelf = () => {
               {bookingMode === 'map' && mapConfig.mapBookingEnabled && (
                 <div style={{ marginBottom: 16 }}>
                   <p style={{ fontSize: 12, color: 'var(--gray-600)', marginBottom: 10 }}>
-                    Active field: <strong>{activeField === 'dropoff' ? 'Drop-off' : 'Pickup'}</strong>
+                    Active field:{' '}
+                    <strong>{activeField === 'dropoff' ? 'Drop-off' : 'Pickup'}</strong>
                   </p>
                   <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
                     <button
@@ -369,7 +481,6 @@ const BookSelf = () => {
                       style={{
                         flex: 1,
                         fontWeight: activeField === 'pickup' ? 700 : 400,
-                        borderColor: activeField === 'pickup' ? 'var(--primary)' : undefined,
                       }}
                       onClick={() => setActiveField('pickup')}
                     >
@@ -381,19 +492,85 @@ const BookSelf = () => {
                       style={{
                         flex: 1,
                         fontWeight: activeField === 'dropoff' ? 700 : 400,
-                        borderColor: activeField === 'dropoff' ? 'var(--primary)' : undefined,
                       }}
                       onClick={() => setActiveField('dropoff')}
                     >
                       Set drop-off
                     </button>
                   </div>
+
+                  <div className="form-group" style={{ position: 'relative' }}>
+                    <label>Search address</label>
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={onSearchChange}
+                      placeholder="Search place in corridor…"
+                      style={{ width: '100%', padding: 10 }}
+                    />
+                    {searchError && (
+                      <p style={{ fontSize: 12, color: 'var(--danger)' }}>{searchError}</p>
+                    )}
+                    {suggestions.length > 0 && (
+                      <ul
+                        style={{
+                          listStyle: 'none',
+                          margin: 0,
+                          padding: 0,
+                          border: '1px solid var(--gray-200)',
+                          borderRadius: 8,
+                          maxHeight: 200,
+                          overflow: 'auto',
+                          background: 'white',
+                          position: 'absolute',
+                          left: 0,
+                          right: 0,
+                          zIndex: 20,
+                        }}
+                      >
+                        {suggestions.map((s, i) => (
+                          <li key={`${s.lat}-${s.lng}-${i}`}>
+                            <button
+                              type="button"
+                              onClick={() => applySuggestion(s)}
+                              style={{
+                                width: '100%',
+                                textAlign: 'left',
+                                padding: '10px 12px',
+                                border: 'none',
+                                borderBottom: '1px solid var(--gray-100)',
+                                background: 'white',
+                                fontSize: 13,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              {s.displayName}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ padding: '6px 12px', fontSize: 12 }}
+                      onClick={() => setMapFullscreen(true)}
+                    >
+                      Fullscreen map
+                    </button>
+                  </div>
+
                   <MapPicker
                     pickup={pickupPin}
                     dropoff={dropPin}
                     activeField={activeField}
-                    tileUrl={mapConfig.mapTileUrl}
+                    tileUrl={tileUrl}
+                    flyTarget={flyTarget}
                     onPick={(latlng) => onMapPick(activeField, latlng)}
+                    height={260}
                   />
                   {mapQuote && (
                     <p style={{ fontSize: 13, marginTop: 8, color: 'var(--gray-600)' }}>
@@ -439,7 +616,9 @@ const BookSelf = () => {
                 <span
                   style={{
                     fontSize: 11,
-                    color: hasCorridor(form.dropoffDescription) ? 'var(--success)' : 'var(--danger)',
+                    color: hasCorridor(form.dropoffDescription)
+                      ? 'var(--success)'
+                      : 'var(--danger)',
                   }}
                 >
                   {CORRIDOR_HINT}
@@ -451,20 +630,42 @@ const BookSelf = () => {
                 <input
                   type="file"
                   accept="image/*"
-                  multiple
                   disabled={uploading}
                   onChange={(e) => handleMediaFile(e, 'pickupPhotos', 'image')}
                 />
+                {(form.pickupPhotos || []).length > 0 && (
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+                    {form.pickupPhotos.map((u) => (
+                      <img
+                        key={u}
+                        src={u}
+                        alt=""
+                        style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 8 }}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
               <div className="form-group">
                 <label>Drop-off photos (optional)</label>
                 <input
                   type="file"
                   accept="image/*"
-                  multiple
                   disabled={uploading}
                   onChange={(e) => handleMediaFile(e, 'dropoffPhotos', 'image')}
                 />
+                {(form.dropoffPhotos || []).length > 0 && (
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+                    {form.dropoffPhotos.map((u) => (
+                      <img
+                        key={u}
+                        src={u}
+                        alt=""
+                        style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 8 }}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
 
               <button
@@ -510,14 +711,59 @@ const BookSelf = () => {
               </div>
               <div className="form-group">
                 <label>Voice note (optional)</label>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8, alignItems: 'center' }}>
+                  {!isRecording ? (
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={startVoiceRecord}
+                      disabled={uploading || !!form.bookingVoiceNote}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                    >
+                      <span aria-hidden style={{ fontSize: 16 }}>
+                        🎤
+                      </span>{' '}
+                      Record voice note
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={stopVoiceRecord}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                    >
+                      <span aria-hidden>⏹</span> Stop recording
+                    </button>
+                  )}
+                  <span style={{ fontSize: 12, color: 'var(--gray-500)' }}>or upload a file</span>
+                </div>
                 <input
                   type="file"
                   accept="audio/*"
-                  disabled={uploading || !!form.bookingVoiceNote}
-                  onChange={(e) => handleMediaFile(e, 'bookingVoiceNote', 'file')}
+                  disabled={uploading || isRecording || !!form.bookingVoiceNote}
+                  onChange={(e) => handleMediaFile(e, 'bookingVoiceNote', 'voice')}
                 />
                 {form.bookingVoiceNote && (
-                  <p style={{ fontSize: 12, color: 'var(--success)' }}>Voice note attached</p>
+                  <div style={{ marginTop: 8 }}>
+                    <audio controls src={form.bookingVoiceNote} style={{ width: '100%', maxWidth: 320 }} />
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ marginTop: 6, padding: '4px 10px', fontSize: 12 }}
+                      onClick={() =>
+                        setForm((f) => {
+                          if (f.bookingVoiceNote && String(f.bookingVoiceNote).startsWith('blob:')) {
+                            try {
+                              URL.revokeObjectURL(f.bookingVoiceNote);
+                            } catch (_) {}
+                          }
+                          return { ...f, bookingVoiceNote: '' };
+                        })
+                      }
+                    >
+                      Remove
+                    </button>
+                  </div>
                 )}
               </div>
               <div className="form-group">
@@ -526,8 +772,17 @@ const BookSelf = () => {
                   type="file"
                   accept="video/*"
                   disabled={uploading}
-                  onChange={(e) => handleMediaFile(e, 'bookingVideo', 'file')}
+                  onChange={(e) => handleMediaFile(e, 'bookingVideo', 'video')}
                 />
+                {form.bookingVideo && (
+                  <div style={{ marginTop: 8 }}>
+                    <video
+                      src={form.bookingVideo}
+                      controls
+                      style={{ width: '100%', maxWidth: 320, borderRadius: 8 }}
+                    />
+                  </div>
+                )}
               </div>
               <div className="form-group">
                 <label>Price (₦) — minimum 1,500</label>
@@ -674,6 +929,56 @@ const BookSelf = () => {
           )}
         </div>
       </div>
+
+      {mapFullscreen && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: '#0f172a' }}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            style={{ position: 'absolute', top: 12, right: 12, zIndex: 10000 }}
+            onClick={() => setMapFullscreen(false)}
+          >
+            Close map
+          </button>
+          <div
+            style={{
+              position: 'absolute',
+              top: 12,
+              left: 12,
+              zIndex: 10000,
+              display: 'flex',
+              gap: 8,
+            }}
+          >
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ padding: '6px 10px', fontSize: 12 }}
+              onClick={() => setActiveField('pickup')}
+            >
+              Pickup
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ padding: '6px 10px', fontSize: 12 }}
+              onClick={() => setActiveField('dropoff')}
+            >
+              Drop-off
+            </button>
+          </div>
+          <MapPicker
+            pickup={pickupPin}
+            dropoff={dropPin}
+            activeField={activeField}
+            tileUrl={tileUrl}
+            flyTarget={flyTarget}
+            onPick={(latlng) => onMapPick(activeField, latlng)}
+            height="100vh"
+            label=""
+          />
+        </div>
+      )}
     </div>
   );
 };

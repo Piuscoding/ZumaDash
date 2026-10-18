@@ -73,9 +73,13 @@ const TrackDelivery = () => {
   }, []);
 
   useEffect(() => {
-    api.get('/api/settings/public').then((r) => {
+    api.get('/api/settings').then((r) => {
       const bd = r.data.settings?.bankDetails || r.data.bankDetails;
-      if (bd) setBankDetails(bd);
+      if (bd) setBankDetails({
+        bankName: bd.bankName || '',
+        accountName: bd.accountName || '',
+        accountNumber: bd.accountNumber || '',
+      });
     }).catch(() => {});
   }, []);
 
