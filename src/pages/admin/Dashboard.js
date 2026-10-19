@@ -285,6 +285,27 @@ const AdminDashboard = () => {
       fetchData();
     } catch (err) { setMessage(err.response?.data?.message || 'Failed'); }
   };
+  const approveMerchantFleet = async (id) => {
+    try {
+      const res = await api.put(`/api/admin/merchants/${id}/approve-fleet`);
+      setMessage(res.data.message || 'Fleet bikes approved');
+      setMerchantDetail(null);
+      fetchData();
+    } catch (err) {
+      setMessage(err.response?.data?.message || 'Failed to approve fleet');
+    }
+  };
+  const rejectMerchantFleet = async (id) => {
+    const note = window.prompt('Rejection reason (optional):') || '';
+    try {
+      const res = await api.put(`/api/admin/merchants/${id}/reject-fleet`, { note });
+      setMessage(res.data.message || 'Fleet request rejected');
+      setMerchantDetail(null);
+      fetchData();
+    } catch (err) {
+      setMessage(err.response?.data?.message || 'Failed to reject fleet');
+    }
+  };
   const freezeRider = async (id, freeze) => {
     try {
       await api.put(`/api/admin/riders/${id}/freeze`, { freeze });
@@ -771,6 +792,12 @@ const AdminDashboard = () => {
                         <strong>{m.name}</strong> <span className="badge badge-info">{m.verificationStatus}</span>
                         <div style={{ fontSize: 13, color: 'var(--gray-500)' }}>{m.email} · {m.phone}</div>
                         <div style={{ fontSize: 12 }}>Bikes applied: {m.fleetApplication?.numberOfBikes || m.bikeDetails?.length || 0}</div>
+                        {(m.pendingFleetExpansion || m.fleetApplication?.additionalRequestStatus === 'pending') && (
+                          <div style={{ fontSize: 12, color: '#b45309', fontWeight: 600 }}>
+                            Additional fleet request pending
+                            {m.pendingFleetBikeCount ? ` (${m.pendingFleetBikeCount} bike(s))` : ''}
+                          </div>
+                        )}
                         {m.merchantBank?.status && m.merchantBank.status !== 'none' && (
                           <div style={{ fontSize: 12 }}>Bank: {m.merchantBank.status}</div>
                         )}
@@ -787,6 +814,14 @@ const AdminDashboard = () => {
                           <>
                             <button className="btn btn-primary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => approveMerchantBank(m._id, 'approve')}>Approve bank</button>
                             <button className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => approveMerchantBank(m._id, 'reject')}>Reject bank</button>
+                          </>
+                        )}
+                        {(m.pendingFleetExpansion ||
+                          (m.verificationStatus === 'approved' &&
+                            m.fleetApplication?.additionalRequestStatus === 'pending')) && (
+                          <>
+                            <button className="btn btn-primary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => approveMerchantFleet(m._id)}>Approve bikes</button>
+                            <button className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => rejectMerchantFleet(m._id)}>Reject bikes</button>
                           </>
                         )}
                       </div>
@@ -855,7 +890,35 @@ const AdminDashboard = () => {
                       </div>
                     ))}
                     <h4 style={{ fontSize: 14 }}>Live bikes / riders</h4>
-                    <p style={{ fontSize: 13 }}>{(merchantDetail.bikes || []).length} bike(s) · {(merchantDetail.riders || []).length} rider(s)</p>
+                    <p style={{ fontSize: 13 }}>
+                      {(merchantDetail.bikes || []).length} active bike(s) · {(merchantDetail.riders || []).length} rider(s)
+                      {(merchantDetail.merchant?.pendingFleetExpansion ||
+                        merchantDetail.merchant?.fleetApplication?.additionalRequestStatus === 'pending') && (
+                        <span style={{ color: '#b45309', fontWeight: 600 }}> · fleet expansion pending</span>
+                      )}
+                    </p>
+                    {(merchantDetail.merchant?.pendingFleetExpansion ||
+                      (merchantDetail.merchant?.verificationStatus === 'approved' &&
+                        merchantDetail.merchant?.fleetApplication?.additionalRequestStatus === 'pending')) && (
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          style={{ padding: '8px 12px', fontSize: 12 }}
+                          onClick={() => approveMerchantFleet(merchantDetail.merchant._id)}
+                        >
+                          Approve submitted bikes
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          style={{ padding: '8px 12px', fontSize: 12 }}
+                          onClick={() => rejectMerchantFleet(merchantDetail.merchant._id)}
+                        >
+                          Reject submitted bikes
+                        </button>
+                      </div>
+                    )}
                     <div style={{ marginTop: 12, padding: 10, background: 'var(--gray-50)', borderRadius: 8 }}>
                       <strong style={{ fontSize: 13 }}>Commission override %</strong>
                       <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
@@ -1000,7 +1063,16 @@ const AdminDashboard = () => {
                               <strong>{j.jobId}</strong>
                               <span className="badge badge-warning" style={{ marginLeft: 8 }}>pending payment</span>
                               <div style={{ fontSize: 13, marginTop: 6 }}>
-                                <strong>₦{(j.suggestedPrice || 0).toLocaleString()}</strong>
+                                <strong>
+                                  ₦{(
+                                    j.amountDue != null
+                                      ? j.amountDue
+                                      : (j.agreedPrice || j.suggestedPrice || 0)
+                                  ).toLocaleString()}
+                                </strong>
+                                {j.merchantSelfBooking ? (
+                                  <span style={{ fontSize: 12, color: 'var(--gray-500)' }}> platform fee</span>
+                                ) : null}
                                 {' · '}
                                 {j.customer?.name || 'Customer'} ({j.customer?.phone || '—'})
                               </div>
@@ -1040,7 +1112,9 @@ const AdminDashboard = () => {
                                 Rider: {j.rider?.name || '—'} · Customer: {j.customer?.name || '—'}
                               </div>
                               <div style={{ fontSize: 13 }}>
-                                Earning ₦{(j.riderEarning || 0).toLocaleString()} · Commission ₦{(j.commissionAmount || 0).toLocaleString()}
+                                {j.merchantSelfBooking
+                                  ? `Own-goods · Platform fee ₦${(j.commissionAmount || j.platformTake || 0).toLocaleString()} · Rider earning ₦0`
+                                  : `Earning ₦${(j.riderEarning || 0).toLocaleString()} · Commission ₦${(j.commissionAmount || 0).toLocaleString()}`}
                                 {' · '}{j.paymentMethod === 'bank_transfer' ? 'Bank' : 'COD'}
                               </div>
                               {j.proofPhotos?.delivered && (

@@ -635,7 +635,11 @@ const TrackDelivery = () => {
               <strong>Drop-off:</strong> {job.dropoff?.description}
             </div>
             <div>
-              <strong>Price:</strong> ₦{(job.agreedPrice || job.suggestedPrice || 0).toLocaleString()}
+              <strong>Price:</strong> ₦{(
+                job.merchantSelfBooking
+                  ? (Number(job.amountPaid) || Number(job.platformTake) || Number(job.agreedPrice) || 0)
+                  : (Number(job.agreedPrice) || Number(job.suggestedPrice) || 0)
+              ).toLocaleString()}
               {job.paymentMethod === 'bank_transfer' ? ' · Bank transfer' : ' · COD'}
             </div>
             {job.rider && (
