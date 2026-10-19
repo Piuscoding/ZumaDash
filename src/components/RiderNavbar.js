@@ -17,6 +17,7 @@ const RiderNavbar = () => {
     { to: '/rider', label: 'Dashboard' },
     { to: '/rider/jobs', label: 'Available Jobs' },
     { to: '/rider/earnings', label: 'Earnings' },
+    { to: '/rider/commission', label: 'Pay commission' },
     { to: '/rider/history', label: 'Job History' },
     { to: '/settings', label: 'Settings' },
     { to: '/profile', label: 'Profile & Documents' },
@@ -35,6 +36,7 @@ const RiderNavbar = () => {
         <div className="hidden md:flex items-center gap-4 text-sm font-medium">
           <Link to="/rider/jobs" className="text-white/90 hover:text-white">Jobs</Link>
           <Link to="/rider/earnings" className="text-white/90 hover:text-white">Earnings</Link>
+          <Link to="/rider/commission" className="text-white/90 hover:text-white">Pay commission</Link>
           <Link to="/rider/history" className="text-white/90 hover:text-white">History</Link>
           <Link to="/support" className="text-white/90 hover:text-white">Support</Link>
           <Link to="/settings" className="text-white/90 hover:text-white">Settings</Link>

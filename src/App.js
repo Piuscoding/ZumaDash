@@ -44,6 +44,7 @@ import TrackDelivery from './pages/customer/TrackDelivery';
 import RiderDashboard from './pages/rider/Dashboard';
 import AvailableJobs from './pages/rider/AvailableJobs';
 import RiderEarnings from './pages/rider/Earnings';
+import PayCommission from './pages/rider/PayCommission';
 import JobHistory from './pages/rider/JobHistory';
 
 // Admin Pages
@@ -113,6 +114,7 @@ function App() {
         <Route path="/rider/jobs" element={<PrivateRoute roles={['rider']}><AvailableJobs /></PrivateRoute>} />
         <Route path="/rider/earnings" element={<PrivateRoute roles={['rider']}><RiderEarnings /></PrivateRoute>} />
         <Route path="/rider/history" element={<PrivateRoute roles={['rider']}><JobHistory /></PrivateRoute>} />
+        <Route path="/rider/commission" element={<PrivateRoute roles={['rider']}><PayCommission /></PrivateRoute>} />
 
         {/* Admin */}
         <Route path="/admin" element={<PrivateRoute roles={['admin', 'manager']}><AdminDashboard /></PrivateRoute>} />

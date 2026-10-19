@@ -68,6 +68,7 @@ const AdminDashboard = () => {
   const [pendingWithdraws, setPendingWithdraws] = useState([]);
   const [bankKycList, setBankKycList] = useState([]);
   const [commissionSettlements, setCommissionSettlements] = useState([]);
+  const [commissionPayments, setCommissionPayments] = useState([]);
   const [paymentSubTab, setPaymentSubTab] = useState('transfers'); // transfers | clearances | withdraws | bank | settlements
   const [timelineJob, setTimelineJob] = useState(null);
   const [riderDetail, setRiderDetail] = useState(null);
@@ -136,6 +137,12 @@ const AdminDashboard = () => {
       try {
         const cs = await api.get('/api/admin/payment-desk/commission-settlements');
         setCommissionSettlements(cs.data.settlements || []);
+        try {
+          const cp = await api.get('/api/admin/payment-desk/commission-payments');
+          setCommissionPayments(cp.data.payments || []);
+        } catch (_) {
+          setCommissionPayments([]);
+        }
       } catch (_) {
         setCommissionSettlements([]);
       }
@@ -369,6 +376,16 @@ const AdminDashboard = () => {
   };
 
   // NOW-1: approve / reject bank transfer
+  const reviewCommissionPay = async (id, action) => {
+    const note = action === 'reject' ? (window.prompt('Rejection reason:') || 'Rejected') : '';
+    try {
+      const res = await api.put(`/api/admin/payment-desk/commission-payments/${id}`, { action, note });
+      setMessage(res.data.message || `Commission payment ${action}d`);
+      fetchData();
+    } catch (err) {
+      setMessage(err.response?.data?.message || 'Failed');
+    }
+  };
   const approvePayment = async (jobId) => {
     try {
       const res = await api.put(`/api/admin/jobs/${jobId}/approve-payment`, { note: 'Approved from Payment desk' });
@@ -1035,6 +1052,7 @@ const AdminDashboard = () => {
                     ['withdraws', `Withdraws (${pendingWithdraws.length})`],
                     ['bank', `Bank KYC (${bankKycList.length})`],
                     ['settlements', 'Settlements'],
+                    ['commPay', `Comm. pay (${commissionPayments.filter((x) => x.status === 'pending_review').length})`],
                   ].map(([key, label]) => (
                     <button
                       key={key}
@@ -1183,6 +1201,49 @@ const AdminDashboard = () => {
                             <div style={{ display: 'flex', gap: 8 }}>
                               <button className="btn btn-primary" style={{ padding: '8px 12px', fontSize: 12 }} onClick={() => reviewBankKyc(r._id, 'approve')}>Approve</button>
                               <button className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: 12 }} onClick={() => reviewBankKyc(r._id, 'reject')}>Reject</button>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+
+                {paymentSubTab === 'commPay' && (
+                  <div>
+                    <p style={{ fontSize: 13, color: 'var(--gray-500)', marginBottom: 12 }}>
+                      Rider COD commission bank transfers. Approve confirms receipt; use Settlements to clear owed and mark paid.
+                    </p>
+                    {commissionPayments.length === 0 ? (
+                      <p style={{ color: 'var(--gray-500)' }}>No commission payments</p>
+                    ) : (
+                      commissionPayments.map((c) => (
+                        <div key={c._id} className="card" style={{ marginBottom: 12, padding: 14 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                            <div>
+                              <strong>₦{(c.amount || 0).toLocaleString()}</strong>
+                              <span className="badge badge-warning" style={{ marginLeft: 8 }}>{c.status}</span>
+                              <div style={{ fontSize: 13, marginTop: 6 }}>
+                                {c.rider?.name || 'Rider'} · {c.rider?.phone || '—'}
+                              </div>
+                              <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>
+                                Account owed: ₦{(c.rider?.commissionOwed || 0).toLocaleString()}
+                                {c.paymentReference ? ` · Ref: ${c.paymentReference}` : ''}
+                              </div>
+                              <div style={{ fontSize: 11, color: 'var(--gray-400)' }}>
+                                {c.createdAt ? new Date(c.createdAt).toLocaleString() : ''}
+                              </div>
+                            </div>
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                              {c.status === 'pending_review' && (
+                                <>
+                                  <button type="button" className="btn btn-primary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => reviewCommissionPay(c._id, 'approve')}>Approve</button>
+                                  <button type="button" className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => reviewCommissionPay(c._id, 'reject')}>Reject</button>
+                                </>
+                              )}
+                              {c.status === 'approved' && (
+                                <span style={{ fontSize: 12, color: 'var(--primary)' }}>Approved — settle on Settlements</span>
+                              )}
                             </div>
                           </div>
                         </div>
