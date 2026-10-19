@@ -18,6 +18,8 @@ const Earnings = () => {
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [withdrawMsg, setWithdrawMsg] = useState('');
   const [busy, setBusy] = useState(false);
+  const [jobs, setJobs] = useState([]);
+  const [jobsLoading, setJobsLoading] = useState(true);
 
   useEffect(() => {
     if (user?.riderBank) {
@@ -28,6 +30,24 @@ const Earnings = () => {
       });
     }
   }, [user]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setJobsLoading(true);
+      try {
+        const res = await api.get('/api/jobs/my');
+        if (!cancelled) setJobs(res.data.jobs || []);
+      } catch (_) {
+        if (!cancelled) setJobs([]);
+      } finally {
+        if (!cancelled) setJobsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const lockUntil = user?.riderBank?.bankDetailsLockedUntil
     ? new Date(user.riderBank.bankDetailsLockedUntil)
@@ -334,6 +354,65 @@ const Earnings = () => {
           </form>
           {withdrawMsg && <p style={{ fontSize: 13, marginTop: 8 }}>{withdrawMsg}</p>}
         </div>
+
+        {/* Job / earnings history */}
+        <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12 }}>Job history</h2>
+        {jobsLoading ? (
+          <p style={{ color: 'var(--gray-500)', fontSize: 14 }}>Loading history…</p>
+        ) : jobs.length === 0 ? (
+          <div className="card" style={{ textAlign: 'center', padding: 28 }}>
+            <p style={{ color: 'var(--gray-500)', margin: 0 }}>No jobs yet</p>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 24 }}>
+            {jobs.map((job) => (
+              <Link
+                key={job._id}
+                to={`/track/${job._id}`}
+                className="card"
+                style={{ display: 'block', padding: 16, textDecoration: 'none', color: 'inherit' }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    marginBottom: 4,
+                    gap: 8,
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <strong style={{ fontSize: 14 }}>{job.jobId}</strong>
+                  <span className="badge badge-info">{String(job.status || '').replace(/_/g, ' ')}</span>
+                </div>
+                <div style={{ fontSize: 13, color: 'var(--gray-500)', marginBottom: 6 }}>
+                  {job.createdAt ? new Date(job.createdAt).toLocaleString() : ''}
+                  {job.paymentMethod ? ` · ${job.paymentMethod === 'bank_transfer' ? 'Bank' : 'COD'}` : ''}
+                </div>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    fontSize: 14,
+                    gap: 8,
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <span>
+                    Agreed: ₦{(job.agreedPrice || job.suggestedPrice || 0).toLocaleString()}
+                  </span>
+                  <span style={{ fontWeight: 600, color: 'var(--primary)' }}>
+                    You: ₦{(job.riderEarning || 0).toLocaleString()}
+                  </span>
+                </div>
+                {Number(job.commissionAmount) > 0 && (
+                  <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 4 }}>
+                    Commission: ₦{Number(job.commissionAmount).toLocaleString()}
+                  </div>
+                )}
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
