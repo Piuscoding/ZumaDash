@@ -376,6 +376,16 @@ const AdminDashboard = () => {
   };
 
   // NOW-1: approve / reject bank transfer
+  const settleCommissionPayment = async (id) => {
+    if (!window.confirm('Settle this commission payment? This reduces the rider\'s commission owed and marks it paid.')) return;
+    try {
+      const res = await api.put(`/api/admin/payment-desk/commission-payments/${id}/settle`);
+      setMessage(res.data.message || 'Commission settled');
+      fetchData();
+    } catch (err) {
+      setMessage(err.response?.data?.message || 'Settle failed');
+    }
+  };
   const reviewCommissionPay = async (id, action) => {
     const note = action === 'reject' ? (window.prompt('Rejection reason:') || 'Rejected') : '';
     try {
@@ -1242,7 +1252,14 @@ const AdminDashboard = () => {
                                 </>
                               )}
                               {c.status === 'approved' && (
-                                <span style={{ fontSize: 12, color: 'var(--primary)' }}>Approved — settle on Settlements</span>
+                                <button
+                                  type="button"
+                                  className="btn btn-primary"
+                                  style={{ padding: '6px 10px', fontSize: 12 }}
+                                  onClick={() => settleCommissionPayment(c._id)}
+                                >
+                                  Settle now
+                                </button>
                               )}
                             </div>
                           </div>
@@ -1254,6 +1271,43 @@ const AdminDashboard = () => {
 
                 {paymentSubTab === 'settlements' && (
                   <div>
+                    <h3 style={{ fontSize: 15, margin: '0 0 10px' }}>Ready to settle</h3>
+                    <p style={{ fontSize: 13, color: 'var(--gray-500)', marginBottom: 12 }}>
+                      Approved commission payments from riders. Settle to clear owed balance and mark paid.
+                    </p>
+                    {(commissionPayments || []).filter((c) => c.status === 'approved').length === 0 ? (
+                      <p style={{ color: 'var(--gray-500)', marginBottom: 20 }}>No approved commission payments waiting to settle</p>
+                    ) : (
+                      (commissionPayments || [])
+                        .filter((c) => c.status === 'approved')
+                        .map((c) => (
+                          <div key={c._id} className="card" style={{ marginBottom: 12, padding: 14 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                              <div>
+                                <strong>{c.rider?.name || 'Rider'}</strong>
+                                <span className="badge badge-info" style={{ marginLeft: 8 }}>approved</span>
+                                <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--primary)', marginTop: 4 }}>
+                                  ₦{(c.amount || 0).toLocaleString()}
+                                </div>
+                                <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>
+                                  Account owed: ₦{(c.rider?.commissionOwed || 0).toLocaleString()}
+                                  {c.paymentReference ? ` · Ref: ${c.paymentReference}` : ''}
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                className="btn btn-primary"
+                                style={{ padding: '8px 14px', fontSize: 13 }}
+                                onClick={() => settleCommissionPayment(c._id)}
+                              >
+                                Settle
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                    )}
+
+                    <h3 style={{ fontSize: 15, margin: '20px 0 10px' }}>Settlement history</h3>
                     {commissionSettlements.length === 0 ? (
                       <p style={{ color: 'var(--gray-500)' }}>No settlements yet</p>
                     ) : (
