@@ -68,6 +68,7 @@ const BookDelivery = ({ adminMode = false } = {}) => {
   const [mapQuote, setMapQuote] = useState(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [bookingMode, setBookingMode] = useState('text'); // 'map' | 'text'
+  const [priceError, setPriceError] = useState('');
   const [activeField, setActiveField] = useState('pickup'); // which field search/map fills
   const [searchQuery, setSearchQuery] = useState('');
   const [mapFullscreen, setMapFullscreen] = useState(false);
@@ -397,6 +398,14 @@ const BookDelivery = ({ adminMode = false } = {}) => {
   };
 
   const goNextFromStep2 = () => {
+    if (!adminMode) {
+      const price = Number(form.suggestedPrice);
+      if (Number.isNaN(price) || price < 1500) {
+        setPriceError('Price cannot go below ₦1,500');
+        return;
+      }
+    }
+    setPriceError('');
     if (form.paymentMethod === 'bank_transfer') {
       setPaymentConfirmed(false);
       setStep(3);
@@ -943,24 +952,22 @@ const BookDelivery = ({ adminMode = false } = {}) => {
                   name="suggestedPrice"
                   value={form.suggestedPrice}
                   onChange={(e) => {
-                    if (adminMode) {
-                      handleChange(e);
-                      return;
-                    }
-                    const v = Number(e.target.value);
-                    if (bookingMode !== 'map' && !Number.isNaN(v) && v < 1500) {
-                      setForm((f) => ({ ...f, suggestedPrice: 1500 }));
-                      return;
-                    }
+                    setPriceError('');
                     handleChange(e);
                   }}
-                  min={adminMode ? 500 : 1500}
+                  min={adminMode ? 1 : 1}
                 />
-                <small style={{ color: 'var(--gray-500)', fontSize: 12 }}>
-                  {bookingMode === 'map' && mapQuote?.locationMode === 'map'
-                    ? 'Suggested from map distance. You can adjust; riders can still offer.'
-                    : 'Riders can make offers.'}
-                </small>
+                {priceError ? (
+                  <small style={{ color: 'var(--danger)', fontSize: 12, display: 'block', marginTop: 4 }}>{priceError}</small>
+                ) : (
+                  <small style={{ color: 'var(--gray-500)', fontSize: 12 }}>
+                    {bookingMode === 'map' && mapQuote?.locationMode === 'map'
+                      ? 'Suggested from map distance. You can adjust; riders can still offer.'
+                      : adminMode
+                        ? 'Admin booking — no minimum enforced here.'
+                        : 'Minimum ₦1,500 in text mode. You can edit this amount.'}
+                  </small>
+                )}
               </div>
               <div className="form-group">
                 <label>Payment Method</label>

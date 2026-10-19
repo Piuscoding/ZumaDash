@@ -21,6 +21,7 @@ const BookSelf = () => {
   const searchTimer = useRef(null);
 
   const [step, setStep] = useState(1);
+  const [priceError, setPriceError] = useState('');
   const [riders, setRiders] = useState([]);
   const [riderId, setRiderId] = useState('');
   const [mapConfig, setMapConfig] = useState({ mapBookingEnabled: false, mapTileUrl: '' });
@@ -318,11 +319,12 @@ const BookSelf = () => {
 
   const goNextFromStep2 = () => {
     setError('');
-    const price = Math.max(1500, Number(form.suggestedPrice) || 0);
-    if (price < 1500) {
-      setError('Minimum price is ₦1,500');
+    const price = Number(form.suggestedPrice);
+    if (Number.isNaN(price) || price < 1500) {
+      setPriceError('Price cannot go below ₦1,500');
       return;
     }
+    setPriceError('');
     setForm((f) => ({ ...f, suggestedPrice: price }));
     if (form.paymentMethod === 'bank_transfer') {
       setPaymentConfirmed(false);
@@ -812,18 +814,21 @@ const BookSelf = () => {
                 )}
               </div>
               <div className="form-group">
-                <label>Price (₦) — minimum 1,500</label>
+                <label>Price (₦)</label>
                 <input
                   type="number"
-                  min={1500}
+                  min={1}
                   value={form.suggestedPrice}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      suggestedPrice: Math.max(1500, Number(e.target.value) || 1500),
-                    })
-                  }
+                  onChange={(e) => {
+                    setPriceError('');
+                    setForm({ ...form, suggestedPrice: e.target.value });
+                  }}
                 />
+                {priceError ? (
+                  <small style={{ color: 'var(--danger)', fontSize: 12, display: 'block', marginTop: 4 }}>{priceError}</small>
+                ) : (
+                  <small style={{ color: 'var(--gray-500)', fontSize: 12 }}>Minimum ₦1,500. You can edit this amount.</small>
+                )}
               </div>
               <div className="form-group">
                 <label>Payment method</label>
