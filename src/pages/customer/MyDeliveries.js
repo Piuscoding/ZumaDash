@@ -68,7 +68,18 @@ const MyDeliveries = () => {
                   → {(j.dropoff?.description || '').slice(0, 50)}…
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: 13 }}>
-                  <span style={{ fontWeight: 700 }}>₦{(j.agreedPrice || j.suggestedPrice || 0).toLocaleString()}</span>
+                  <span style={{ fontWeight: 700 }}>
+                    ₦{(
+                      Number(j.totalPayable) ||
+                      (Number(j.agreedPrice) || Number(j.suggestedPrice) || 0) + (Number(j.vatAmount) || 0) ||
+                      0
+                    ).toLocaleString()}
+                    {Number(j.vatAmount) > 0 ? (
+                      <span style={{ fontWeight: 500, color: 'var(--gray-500)', fontSize: 12 }}>
+                        {' '}(incl. VAT)
+                      </span>
+                    ) : null}
+                  </span>
                   <span style={{ color: 'var(--gray-500)' }}>{new Date(j.createdAt).toLocaleDateString()}</span>
                 </div>
               </Link>

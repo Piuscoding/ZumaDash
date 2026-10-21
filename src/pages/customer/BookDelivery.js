@@ -56,6 +56,7 @@ const BookDelivery = ({ adminMode = false } = {}) => {
   const [mediaRecorder, setMediaRecorder] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
+  const [vatPercent, setVatPercent] = useState(0);
   const [bankDetails, setBankDetails] = useState({
     accountName: '',
     accountNumber: '',
@@ -104,6 +105,8 @@ const BookDelivery = ({ adminMode = false } = {}) => {
             bankName: bd.bankName || '',
           });
         }
+        const vp = res.data.settings?.vatPercent != null ? Number(res.data.settings.vatPercent) : 0;
+        setVatPercent(!Number.isNaN(vp) && vp > 0 ? vp : 0);
         if (res.data.settings?.mapBookingEnabled) {
           setMapConfig((c) => ({ ...c, mapBookingEnabled: true, mapTileUrl: res.data.settings.mapTileUrl || c.mapTileUrl }));
         }
@@ -400,18 +403,21 @@ const BookDelivery = ({ adminMode = false } = {}) => {
   const goNextFromStep2 = () => {
     if (!adminMode) {
       const price = Number(form.suggestedPrice);
-      if (Number.isNaN(price) || price < 1500) {
-        setPriceError('Price cannot go below ₦1,500');
+      // Text mode only: hard minimum ₦1,500. Map mode may use admin formula below ₦1,500.
+      if (bookingMode !== 'map') {
+        if (Number.isNaN(price) || price < 1500) {
+          setPriceError('Price cannot go below ₦1,500');
+          return;
+        }
+      } else if (Number.isNaN(price) || price <= 0) {
+        setPriceError('Enter a valid price');
         return;
       }
     }
     setPriceError('');
-    if (form.paymentMethod === 'bank_transfer') {
-      setPaymentConfirmed(false);
-      setStep(3);
-      return;
-    }
-    finishOrAuthGate();
+    // Bank transfer and COD both go to step 3 (payment / cost summary)
+    setPaymentConfirmed(false);
+    setStep(3);
   };
 
   const finishOrAuthGate = () => {
@@ -525,6 +531,11 @@ const BookDelivery = ({ adminMode = false } = {}) => {
     setIsRecording(false);
     setMediaRecorder(null);
   };
+
+
+  const payBaseAmount = Math.max(0, Number(form.suggestedPrice) || 0);
+  const payVatAmount = vatPercent > 0 ? Math.round((payBaseAmount * vatPercent) / 100) : 0;
+  const payTotalAmount = payBaseAmount + payVatAmount;
 
 
   return (
@@ -992,23 +1003,19 @@ const BookDelivery = ({ adminMode = false } = {}) => {
               <div style={{ display: 'flex', gap: 12 }}>
                 <button className="btn btn-secondary" onClick={() => setStep(1)} style={{ flex: 1 }}>← Back</button>
                 <button className="btn btn-primary" onClick={goNextFromStep2} disabled={loading || uploading} style={{ flex: 2 }}>
-                  {form.paymentMethod === 'bank_transfer'
-                    ? 'Next: Payment Details →'
-                    : isAuthenticated
-                      ? (loading ? 'Creating...' : 'Create Delivery')
-                      : 'Continue →'}
+                  Confirm details →
                 </button>
               </div>
             </>
           )}
 
-          {step === 3 && form.paymentMethod === 'bank_transfer' && (
+          {step === 3 && (
             <>
+              {form.paymentMethod === 'bank_transfer' ? (
               <div style={{ background: 'var(--primary-light)', border: '1px solid #86efac', borderRadius: 12, padding: 20, marginBottom: 20 }}>
                 <h3 style={{ fontSize: 16, marginBottom: 12, color: 'var(--primary-dark)' }}>Bank Transfer Details</h3>
                 <p style={{ fontSize: 13, color: 'var(--gray-700)', marginBottom: 16 }}>
-                  Transfer <strong>₦{Number(form.suggestedPrice).toLocaleString()}</strong> to the account below.
-                  
+                  Transfer <strong>₦{payTotalAmount.toLocaleString()}</strong> to the account below.
                 </p>
                 <div style={{ background: 'white', borderRadius: 10, padding: 16 }}>
                   <div style={{ marginBottom: 12 }}>
@@ -1023,14 +1030,56 @@ const BookDelivery = ({ adminMode = false } = {}) => {
                     <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Account Number</div>
                     <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: 1 }}>{bankDetails.accountNumber || '—'}</div>
                   </div>
+                  <div style={{ marginBottom: payVatAmount > 0 ? 10 : 0 }}>
+                    <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Amount</div>
+                    <div style={{ fontSize: 18, fontWeight: 700 }}>
+                      ₦{payBaseAmount.toLocaleString()}
+                    </div>
+                  </div>
+                  {payVatAmount > 0 && (
+                    <div style={{ marginBottom: 10 }}>
+                      <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>VAT ({vatPercent}%)</div>
+                      <div style={{ fontSize: 16, fontWeight: 700 }}>
+                        ₦{payVatAmount.toLocaleString()}
+                      </div>
+                    </div>
+                  )}
                   <div>
-                    <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Amount to Pay</div>
+                    <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Total to pay</div>
                     <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--primary)' }}>
-                      ₦{Number(form.suggestedPrice).toLocaleString()}
+                      ₦{payTotalAmount.toLocaleString()}
                     </div>
                   </div>
                 </div>
               </div>
+              ) : (
+              <div style={{ background: '#fff7ed', border: '1px solid #fdba74', borderRadius: 12, padding: 20, marginBottom: 20 }}>
+                <h3 style={{ fontSize: 16, marginBottom: 12, color: '#c2410c' }}>Cash on delivery — cost summary</h3>
+                <p style={{ fontSize: 13, color: 'var(--gray-700)', marginBottom: 16 }}>
+                  Confirm the amounts below. You will pay the rider in cash when the delivery completes.
+                  {vatPercent > 0 ? ` VAT is ${vatPercent}% on the delivery amount.` : ''}
+                </p>
+                <div style={{ background: 'white', borderRadius: 10, padding: 16 }}>
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Amount</div>
+                    <div style={{ fontSize: 18, fontWeight: 700 }}>₦{payBaseAmount.toLocaleString()}</div>
+                  </div>
+                  {payVatAmount > 0 && (
+                    <div style={{ marginBottom: 10 }}>
+                      <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>VAT ({vatPercent}%)</div>
+                      <div style={{ fontSize: 16, fontWeight: 700 }}>₦{payVatAmount.toLocaleString()}</div>
+                    </div>
+                  )}
+                  <div style={{ borderTop: payVatAmount > 0 ? '1px solid #e2e8f0' : 'none', paddingTop: payVatAmount > 0 ? 10 : 0 }}>
+                    <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Total to pay (cash)</div>
+                    <div style={{ fontSize: 22, fontWeight: 800, color: '#c2410c' }}>
+                      ₦{payTotalAmount.toLocaleString()}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              )}
+              {form.paymentMethod === 'bank_transfer' && (
               <div className="form-group">
                 <label>Payment reference / note (optional)</label>
                 <input
@@ -1042,10 +1091,13 @@ const BookDelivery = ({ adminMode = false } = {}) => {
                 />
                 <small style={{ color: 'var(--gray-500)', fontSize: 12 }}>Helps admin match your transfer.</small>
               </div>
+              )}
               <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 20, cursor: 'pointer' }}>
                 <input type="checkbox" checked={paymentConfirmed} onChange={(e) => setPaymentConfirmed(e.target.checked)} style={{ marginTop: 3, width: 18, height: 18 }} />
                 <span style={{ fontSize: 14 }}>
-                  I confirm I have transferred ₦{Number(form.suggestedPrice).toLocaleString()} to the account above. My job will wait for admin approval before riders can offer.
+                  {form.paymentMethod === 'bank_transfer'
+                    ? `I confirm I have transferred ₦${payTotalAmount.toLocaleString()} to the account above. My job will wait for admin approval before riders can offer.`
+                    : `I confirm the delivery total is ₦${payTotalAmount.toLocaleString()} (cash on delivery).`}
                 </span>
               </label>
               <div style={{ display: 'flex', gap: 12 }}>

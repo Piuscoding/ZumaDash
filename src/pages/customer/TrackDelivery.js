@@ -634,14 +634,61 @@ const TrackDelivery = () => {
             <div style={{ marginBottom: 8 }}>
               <strong>Drop-off:</strong> {job.dropoff?.description}
             </div>
-            <div>
-              <strong>Price:</strong> ₦{(
-                job.merchantSelfBooking
-                  ? (Number(job.amountPaid) || Number(job.platformTake) || Number(job.agreedPrice) || 0)
-                  : (Number(job.agreedPrice) || Number(job.suggestedPrice) || 0)
-              ).toLocaleString()}
-              {job.paymentMethod === 'bank_transfer' ? ' · Bank transfer' : ' · COD'}
-            </div>
+            {job.merchantSelfBooking ? (
+              <div>
+                <strong>Price:</strong> ₦{(
+                  Number(job.amountPaid) || Number(job.platformTake) || Number(job.agreedPrice) || 0
+                ).toLocaleString()}
+                {' · Bank transfer'}
+              </div>
+            ) : (
+              <div
+                style={{
+                  marginTop: 4,
+                  padding: 12,
+                  borderRadius: 10,
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                }}
+              >
+                <div style={{ fontSize: 12, color: 'var(--gray-500)', marginBottom: 6 }}>
+                  {job.paymentMethod === 'bank_transfer' ? 'Bank transfer' : 'Cash on delivery'}
+                  {job.agreedPrice ? ' · Agreed' : ' · Listed'}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 4 }}>
+                  <span>Amount</span>
+                  <strong>
+                    ₦{(Number(job.agreedPrice) || Number(job.suggestedPrice) || 0).toLocaleString()}
+                  </strong>
+                </div>
+                {Number(job.vatAmount) > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 4 }}>
+                    <span>VAT ({job.vatPercentUsed || 0}%)</span>
+                    <strong>₦{Number(job.vatAmount).toLocaleString()}</strong>
+                  </div>
+                )}
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    fontSize: 15,
+                    fontWeight: 800,
+                    marginTop: 6,
+                    paddingTop: 8,
+                    borderTop: '1px solid #e2e8f0',
+                  }}
+                >
+                  <span>Total to pay</span>
+                  <span style={{ color: 'var(--primary)' }}>
+                    ₦{(
+                      Number(job.totalPayable) ||
+                      (Number(job.agreedPrice) || Number(job.suggestedPrice) || 0) +
+                        (Number(job.vatAmount) || 0)
+                    ).toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            )}
             {job.rider && (
               <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10 }}>
                 {avatar(job.rider)}

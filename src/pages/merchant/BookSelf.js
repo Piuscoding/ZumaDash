@@ -894,8 +894,20 @@ const BookSelf = () => {
                     {bankDetails.accountNumber || '—'}
                   </div>
                 </div>
+                <div style={{ marginBottom: vatAmt > 0 ? 8 : 0 }}>
+                  <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Commission</div>
+                  <div style={{ fontSize: 16, fontWeight: 700 }}>₦{commissionAmt.toLocaleString()}</div>
+                </div>
+                {vatAmt > 0 && (
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>
+                      VAT ({ownGoodsRates.vatPct}%)
+                    </div>
+                    <div style={{ fontSize: 16, fontWeight: 700 }}>₦{vatAmt.toLocaleString()}</div>
+                  </div>
+                )}
                 <div>
-                  <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Amount</div>
+                  <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Total to pay</div>
                   <div style={{ fontSize: 18, fontWeight: 800 }}>
                     ₦{platformTakeAmount.toLocaleString()}
                   </div>

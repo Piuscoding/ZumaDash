@@ -38,9 +38,13 @@ const AvailableJobs = () => {
       if (job?.locationMode === 'map') {
         coords = await ensureLocationForMap('offering on map jobs');
       }
-      const amount = offerAmount[jobId] || suggested;
+      const raw = offerAmount[jobId];
+      const amount =
+        raw !== undefined && raw !== null && String(raw).trim() !== ''
+          ? Number(raw)
+          : Number(suggested);
       const res = await api.post(`/api/jobs/${jobId}/offer`, {
-        amount: Number(amount),
+        amount: Math.round(Number(amount) || 0),
         message: offerNote[jobId] || '',
         ...(coords ? { lat: coords.lat, lng: coords.lng } : {}),
       });
