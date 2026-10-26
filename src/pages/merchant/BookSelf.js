@@ -436,8 +436,19 @@ const BookSelf = () => {
                 >
                   <option value="">— Select rider —</option>
                   {riders.map((r) => (
-                    <option key={r._id} value={r._id}>
+                    <option
+                      key={r._id}
+                      value={r._id}
+                      disabled={!!r.hasActiveJob || !!r.fleetFlags?.suspended}
+                    >
                       {r.name} · {r.phone || r.email}
+                      {r.hasActiveJob
+                        ? r.waitingRemainingPayment
+                          ? ' (busy · waiting payment)'
+                          : ' (busy · active job)'
+                        : r.fleetFlags?.suspended
+                          ? ' (suspended)'
+                          : ''}
                     </option>
                   ))}
                 </select>

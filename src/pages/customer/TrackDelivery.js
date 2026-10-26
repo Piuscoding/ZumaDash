@@ -368,7 +368,10 @@ const TrackDelivery = () => {
 
 
   const remainingBal = Number(job.remainingBalance) || 0;
-  const hasRemaining = remainingBal > 0 && job.status === 'pending_payment_approval';
+  // Card stays up while any remaining balance is due (including after rider steps away)
+  const hasRemaining =
+    remainingBal > 0 &&
+    (job.status === 'pending_payment_approval' || !!job.remainingPaymentRiderDeclined);
   const deadlineMs = job.remainingPaymentDeadline ? new Date(job.remainingPaymentDeadline).getTime() : 0;
   const secsLeft = deadlineMs ? Math.max(0, Math.floor((deadlineMs - nowTs) / 1000)) : 0;
   const mm = String(Math.floor(secsLeft / 60)).padStart(2, '0');
@@ -457,7 +460,13 @@ const TrackDelivery = () => {
                   <div style={{ fontSize: 12, color: '#78716c', marginTop: 6 }}>Account number</div>
                   <div style={{ fontWeight: 800, letterSpacing: 1 }}>{bankDetails.accountNumber || '—'}</div>
                 </div>
-                {!job.remainingPaymentSubmitted ? (
+                
+            {isCustomerUser && job.remainingPaymentRiderDeclined && (
+              <p style={{ fontSize: 13, color: '#92400e', marginBottom: 12, fontWeight: 600 }}>
+                The rider stepped away. Pay the remaining balance below. This job reopens for other riders only after admin approves this payment (or cancels the delivery).
+              </p>
+            )}
+{!job.remainingPaymentSubmitted ? (
                   <>
                     <input
                       placeholder="Payment reference (optional)"

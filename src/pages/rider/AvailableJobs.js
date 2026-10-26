@@ -26,6 +26,7 @@ const AvailableJobs = () => {
   const [loading, setLoading] = useState(true);
   const [offerAmount, setOfferAmount] = useState({});
   const [offerNote, setOfferNote] = useState({});
+  const [riderReoffer, setRiderReoffer] = useState({});
   const [submitting, setSubmitting] = useState(null);
   const [message, setMessage] = useState('');
   const [detailId, setDetailId] = useState(null);
@@ -99,6 +100,42 @@ const AvailableJobs = () => {
       fetchJobs();
     } catch (err) {
       setMessage(err.response?.data?.message || err.message || 'Failed to submit offer');
+    } finally {
+      setSubmitting(null);
+    }
+  };
+
+
+  const respondCounter = async (jobId, offerId, action) => {
+    setSubmitting(jobId);
+    setMessage('');
+    try {
+      const body = { offerId, action };
+      if (action === 'counter') {
+        body.amount = Number(riderReoffer[offerId]);
+        if (!body.amount || body.amount <= 0) {
+          setMessage('Enter a valid re-offer amount');
+          setSubmitting(null);
+          return;
+        }
+      }
+      const res = await api.post(`/api/jobs/${jobId}/respond-counter`, body);
+      setMessage(
+        res.data.message ||
+          (action === 'accept'
+            ? 'Counter accepted'
+            : action === 'decline'
+              ? 'Declined'
+              : 'New offer sent')
+      );
+      setRiderReoffer((d) => ({ ...d, [offerId]: '' }));
+      await fetchJobs();
+      // If assigned, optional soft note
+      if (action === 'accept' && res.data.job?.status === 'accepted') {
+        setMessage(res.data.message || 'Counter accepted. Job assigned.');
+      }
+    } catch (err) {
+      setMessage(err.response?.data?.message || err.message || 'Failed');
     } finally {
       setSubmitting(null);
     }
@@ -379,43 +416,176 @@ const AvailableJobs = () => {
                   </button>
                 </div>
 
-                <div style={{ borderTop: '1px solid var(--gray-200)', paddingTop: 10 }}>
-                  <p style={{ fontSize: 12, color: 'var(--gray-500)', marginBottom: 8 }}>Or make a counter offer</p>
-                  <input
-                    type="number"
-                    placeholder="Your offer (₦)"
-                    value={offerAmount[job._id] ?? job.suggestedPrice}
-                    onChange={(e) => setOfferAmount({ ...offerAmount, [job._id]: e.target.value })}
+                {(job.offers || []).length > 0 && (
+                  <div
                     style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      borderRadius: 8,
-                      border: '1.5px solid var(--gray-200)',
-                      marginBottom: 8,
+                      borderTop: '1px solid var(--gray-200)',
+                      paddingTop: 10,
+                      marginBottom: 10,
                     }}
-                  />
-                  <input
-                    type="text"
-                    placeholder="Short note (optional)"
-                    value={offerNote[job._id] || ''}
-                    onChange={(e) => setOfferNote({ ...offerNote, [job._id]: e.target.value })}
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      borderRadius: 8,
-                      border: '1.5px solid var(--gray-200)',
-                      marginBottom: 8,
-                    }}
-                  />
-                  <button
-                    className="btn btn-secondary"
-                    onClick={() => handleOffer(job._id, job.suggestedPrice)}
-                    disabled={submitting === job._id}
-                    style={{ width: '100%' }}
                   >
-                    {submitting === job._id ? '...' : 'Make offer'}
-                  </button>
-                </div>
+                    <strong style={{ fontSize: 13 }}>Bargaining history</strong>
+                    {(job.offers || []).map((o) => (
+                      <div
+                        key={o._id || `${o.amount}-${o.status}`}
+                        style={{
+                          fontSize: 13,
+                          marginTop: 8,
+                          padding: 10,
+                          background: 'var(--gray-50)',
+                          borderRadius: 8,
+                        }}
+                      >
+                        <div>
+                          Your offer: <strong>₦{(o.amount || 0).toLocaleString()}</strong>
+                          {' · '}
+                          <span className="badge badge-info" style={{ marginLeft: 4 }}>
+                            {String(o.status || '').replace(/_/g, ' ')}
+                          </span>
+                        </div>
+                        {o.message ? (
+                          <div style={{ color: 'var(--gray-500)', marginTop: 4 }}>{o.message}</div>
+                        ) : null}
+                        {(o.history || []).length > 0 && (
+                          <div style={{ marginTop: 8, fontSize: 12 }}>
+                            {(o.history || []).map((h, hi) => (
+                              <div key={hi} style={{ marginTop: 3 }}>
+                                {h.by === 'customer' ? 'Customer' : 'You'}: ₦
+                                {(h.amount || 0).toLocaleString()}
+                                {h.message ? ` — ${h.message}` : ''}
+                                {h.at ? ` · ${new Date(h.at).toLocaleString()}` : ''}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {o.status === 'countered' && (
+                          <div style={{ marginTop: 10 }}>
+                            <p style={{ fontSize: 13, marginBottom: 8 }}>
+                              Customer counter:{' '}
+                              <strong>₦{(o.counterAmount || 0).toLocaleString()}</strong>
+                              {o.counterMessage ? ` — ${o.counterMessage}` : ''}
+                            </p>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                              <button
+                                type="button"
+                                className="btn btn-primary"
+                                style={{ padding: '8px 12px', fontSize: 12 }}
+                                disabled={submitting === job._id}
+                                onClick={() => respondCounter(job._id, o._id, 'accept')}
+                              >
+                                Accept counter
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                style={{ padding: '8px 12px', fontSize: 12 }}
+                                disabled={submitting === job._id}
+                                onClick={() => respondCounter(job._id, o._id, 'decline')}
+                              >
+                                Decline
+                              </button>
+                              <input
+                                type="number"
+                                placeholder="Re-offer ₦"
+                                value={riderReoffer[o._id] || ''}
+                                onChange={(e) =>
+                                  setRiderReoffer((d) => ({ ...d, [o._id]: e.target.value }))
+                                }
+                                style={{
+                                  width: 100,
+                                  padding: 8,
+                                  borderRadius: 8,
+                                  border: '1px solid var(--gray-200)',
+                                }}
+                              />
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                style={{ padding: '8px 12px', fontSize: 12 }}
+                                disabled={submitting === job._id}
+                                onClick={() => respondCounter(job._id, o._id, 'counter')}
+                              >
+                                Counter again
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {(() => {
+                  const myOffers = job.offers || [];
+                  const hasPending = myOffers.some((o) => String(o.status) === 'pending');
+                  const hasCountered = myOffers.some((o) => String(o.status) === 'countered');
+                  // Lock new top-level offers while awaiting customer (pending) or while handling a counter on card
+                  const offerLocked = hasPending || hasCountered;
+                  return (
+                    <div style={{ borderTop: '1px solid var(--gray-200)', paddingTop: 10 }}>
+                      <p style={{ fontSize: 12, color: 'var(--gray-500)', marginBottom: 8 }}>
+                        {hasCountered
+                          ? 'Respond to the customer counter above (accept, decline, or counter again)'
+                          : hasPending
+                            ? 'Waiting for customer response — offer fields locked'
+                            : 'Or make a counter offer'}
+                      </p>
+                      <input
+                        type="number"
+                        placeholder="Your offer (₦)"
+                        value={offerAmount[job._id] ?? job.suggestedPrice}
+                        disabled={offerLocked || submitting === job._id}
+                        onChange={(e) => setOfferAmount({ ...offerAmount, [job._id]: e.target.value })}
+                        style={{
+                          width: '100%',
+                          padding: '10px 12px',
+                          borderRadius: 8,
+                          border: '1.5px solid var(--gray-200)',
+                          marginBottom: 8,
+                          background: offerLocked ? '#f1f5f9' : undefined,
+                          opacity: offerLocked ? 0.7 : 1,
+                        }}
+                      />
+                      <input
+                        type="text"
+                        placeholder="Short note (optional)"
+                        value={offerNote[job._id] || ''}
+                        disabled={offerLocked || submitting === job._id}
+                        onChange={(e) => setOfferNote({ ...offerNote, [job._id]: e.target.value })}
+                        style={{
+                          width: '100%',
+                          padding: '10px 12px',
+                          borderRadius: 8,
+                          border: '1.5px solid var(--gray-200)',
+                          marginBottom: 8,
+                          background: offerLocked ? '#f1f5f9' : undefined,
+                          opacity: offerLocked ? 0.7 : 1,
+                        }}
+                      />
+                      <button
+                        className="btn btn-secondary"
+                        onClick={() => {
+                          if (offerLocked) return;
+                          handleOffer(job._id, job.suggestedPrice);
+                        }}
+                        disabled={offerLocked || submitting === job._id}
+                        style={{
+                          width: '100%',
+                          opacity: offerLocked ? 0.65 : 1,
+                          cursor: offerLocked ? 'not-allowed' : 'pointer',
+                        }}
+                      >
+                        {submitting === job._id
+                          ? '...'
+                          : offerLocked
+                            ? hasCountered
+                              ? 'Use buttons above for this counter'
+                              : 'Offer pending customer response'
+                            : 'Make offer'}
+                      </button>
+                    </div>
+                  );
+                })()}
               </div>
             ))}
           </div>
