@@ -20,6 +20,8 @@ const Earnings = () => {
   const [busy, setBusy] = useState(false);
   const [jobs, setJobs] = useState([]);
   const [jobsLoading, setJobsLoading] = useState(true);
+  const [withdraws, setWithdraws] = useState([]);
+  const [withdrawsLoading, setWithdrawsLoading] = useState(true);
 
   useEffect(() => {
     if (user?.riderBank) {
@@ -49,9 +51,28 @@ const Earnings = () => {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setWithdrawsLoading(true);
+      try {
+        const res = await api.get('/api/users/withdraws');
+        if (!cancelled) setWithdraws(res.data.withdraws || res.data.list || []);
+      } catch (_) {
+        if (!cancelled) setWithdraws([]);
+      } finally {
+        if (!cancelled) setWithdrawsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const lockUntil = user?.riderBank?.bankDetailsLockedUntil
     ? new Date(user.riderBank.bankDetailsLockedUntil)
     : null;
+  const docsBlocked = !!user?.documentsReuploadRequired;
   const bankLocked =
     user?.riderBank?.status === 'approved' &&
     lockUntil &&
@@ -120,6 +141,11 @@ const Earnings = () => {
   };
 
   const requestWithdraw = async (e) => {
+    if (user?.documentsReuploadRequired) {
+      setWithdrawMsg('Re-upload and approval required before withdrawals.');
+      return;
+    }
+
     e.preventDefault();
     setBusy(true);
     setWithdrawMsg('');
@@ -135,6 +161,14 @@ const Earnings = () => {
       setBusy(false);
     }
   };
+
+  const totalWithdrawn = withdraws
+    .filter((w) => ['paid', 'approved', 'completed'].includes(String(w.status || '').toLowerCase()) || w.status === 'paid')
+    .reduce((s, w) => s + (Number(w.amount) || 0), 0);
+  // Prefer sum of all non-rejected if paid statuses sparse
+  const totalWithdrawnAll = withdraws
+    .filter((w) => String(w.status || '').toLowerCase() !== 'rejected')
+    .reduce((s, w) => s + (Number(w.amount) || 0), 0);
 
   const available = Number(user?.availableBalance || 0);
   const amountNum = Number(withdrawAmount) || 0;
@@ -349,10 +383,50 @@ const Earnings = () => {
               </p>
             )}
             <button type="submit" className="btn btn-primary" disabled={busy || amountNum <= 0}>
-              Request withdraw
+              docsBlocked ? 'Re-upload docs first' : 'Request withdraw'
             </button>
           </form>
           {withdrawMsg && <p style={{ fontSize: 13, marginTop: 8 }}>{withdrawMsg}</p>}
+        </div>
+
+
+        <div className="card" style={{ padding: 16, marginBottom: 16 }}>
+          <h3 style={{ fontSize: 15, marginBottom: 8 }}>Withdrawal history</h3>
+          <div style={{ fontSize: 13, color: 'var(--gray-500)', marginBottom: 10 }}>
+            Total withdrawn:{' '}
+            <strong style={{ color: 'var(--gray-900)' }}>
+              ₦{(totalWithdrawn > 0 ? totalWithdrawn : totalWithdrawnAll).toLocaleString()}
+            </strong>
+          </div>
+          {withdrawsLoading ? (
+            <p style={{ fontSize: 13, color: 'var(--gray-500)' }}>Loading…</p>
+          ) : withdraws.length === 0 ? (
+            <p style={{ fontSize: 13, color: 'var(--gray-500)' }}>No withdrawals yet</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {withdraws.map((w) => (
+                <div
+                  key={w._id}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    gap: 8,
+                    fontSize: 13,
+                    padding: '8px 0',
+                    borderBottom: '1px solid var(--gray-100)',
+                  }}
+                >
+                  <div>
+                    <strong>₦{Number(w.amount || 0).toLocaleString()}</strong>
+                    <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>
+                      {w.createdAt ? new Date(w.createdAt).toLocaleString() : ''}
+                    </div>
+                  </div>
+                  <span style={{ fontSize: 12, fontWeight: 600 }}>{String(w.status || 'pending').replace(/_/g, ' ')}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Job / earnings history */}

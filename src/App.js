@@ -2,6 +2,10 @@
 export function effectiveAppRole(user) {
   if (!user) return null;
   if (user.role === 'admin' || user.role === 'manager') return user.role;
+  // Rider with admin-requested document re-upload stays on rider UX (jobs/withdraw blocked elsewhere)
+  if (user.role === 'rider' && user.documentsReuploadRequired) {
+    return 'rider';
+  }
   if (user.role === 'rider' || user.role === 'merchant') {
     if (user.verificationStatus && user.verificationStatus !== 'approved') {
       return 'customer';
@@ -52,9 +56,11 @@ import AdminDashboard from './pages/admin/Dashboard';
 
 // Merchant Pages
 import MerchantDashboard from './pages/merchant/Dashboard';
+import MerchantMyDeliveries from './pages/merchant/MyDeliveries';
 import BookSelf from './pages/merchant/BookSelf';
 import AddFleet from './pages/merchant/AddFleet';
 import RiderControls from './pages/merchant/RiderControls';
+import BikeDetails from './pages/merchant/BikeDetails';
 
 // Shared
 import Notifications from './pages/Notifications';
@@ -125,8 +131,10 @@ function App() {
         {/* Merchant */}
         <Route path="/merchant" element={<PrivateRoute roles={['merchant']}><MerchantDashboard /></PrivateRoute>} />
         <Route path="/merchant/book" element={<PrivateRoute roles={['merchant']}><BookSelf /></PrivateRoute>} />
+        <Route path="/merchant/my-deliveries" element={<PrivateRoute roles={['merchant']}><MerchantMyDeliveries /></PrivateRoute>} />
         <Route path="/merchant/add-fleet" element={<PrivateRoute roles={['merchant']}><AddFleet /></PrivateRoute>} />
         <Route path="/merchant/riders/:id/controls" element={<PrivateRoute roles={['merchant']}><RiderControls /></PrivateRoute>} />
+        <Route path="/merchant/bikes/:id" element={<PrivateRoute roles={['merchant']}><BikeDetails /></PrivateRoute>} />
 
         {/* Shared authenticated */}
         <Route path="/notifications" element={<PrivateRoute><Notifications /></PrivateRoute>} />

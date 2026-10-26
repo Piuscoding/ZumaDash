@@ -25,6 +25,10 @@ const AddFleet = () => {
   const [err, setErr] = useState('');
 
   const setBikeCount = (n) => {
+    if (n === '' || n === null || n === undefined) {
+      setNumberOfBikes('');
+      return;
+    }
     const c = Math.min(20, Math.max(1, parseInt(n, 10) || 1));
     setNumberOfBikes(c);
     setBikes((prev) => {
@@ -132,8 +136,19 @@ const AddFleet = () => {
                 type="number"
                 min={1}
                 max={20}
-                value={numberOfBikes}
-                onChange={(e) => setBikeCount(e.target.value)}
+                value={numberOfBikes === '' || numberOfBikes == null ? '' : numberOfBikes}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v === '') {
+                    setNumberOfBikes('');
+                    return;
+                  }
+                  const n = parseInt(v, 10);
+                  if (!Number.isNaN(n)) setBikeCount(String(n));
+                }}
+                onBlur={() => {
+                  if (numberOfBikes === '' || Number(numberOfBikes) < 1) setBikeCount('1');
+                }}
               />
             </div>
 

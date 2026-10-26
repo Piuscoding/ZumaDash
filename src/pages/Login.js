@@ -71,7 +71,8 @@ const Login = () => {
         const pending =
           (user.role === 'rider' || user.role === 'merchant') &&
           user.verificationStatus &&
-          user.verificationStatus !== 'approved';
+          user.verificationStatus !== 'approved' &&
+          !(user.role === 'rider' && user.documentsReuploadRequired);
         const appRole = pending ? 'customer' : user.role;
         if (appRole === 'admin' || appRole === 'manager' || user.role === 'admin' || user.role === 'manager') navigate('/admin');
         else if (appRole === 'merchant') navigate('/merchant');

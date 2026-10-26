@@ -18,7 +18,15 @@ const Profile = () => {
   const [form, setForm] = useState({ name: '', phone: '', address: '' });
   const [addresses, setAddresses] = useState([]);
   const [newAddr, setNewAddr] = useState({ label: '', description: '', zone: '' });
-  const [bikeForm, setBikeForm] = useState({ plate: '', model: '', color: '' });
+  const [bikeForm, setBikeForm] = useState({
+    plate: '',
+    model: '',
+    color: '',
+    photoUrls: [],
+    documentUrls: [],
+    videoUrl: '',
+  });
+  const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [section, setSection] = useState('profile');
@@ -43,10 +51,14 @@ const Profile = () => {
         address: user.address || '',
       });
       if (user.bikeDetails?.[0]) {
+        const b = user.bikeDetails[0];
         setBikeForm({
-          plate: user.bikeDetails[0].plate || '',
-          model: user.bikeDetails[0].model || '',
-          color: user.bikeDetails[0].color || '',
+          plate: b.plateNumber || b.plate || '',
+          model: b.model || '',
+          color: b.color || '',
+          photoUrls: b.photoUrls || (b.photoUrl ? [b.photoUrl] : []),
+          documentUrls: b.documentUrls || (b.papersUrl ? [b.papersUrl] : []),
+          videoUrl: b.videoUrl || '',
         });
       }
     }
@@ -133,16 +145,93 @@ const Profile = () => {
     }
   };
 
+  const canEditDocs = !!user?.documentsReuploadRequired;
+  const docsUnderReview =
+    user?.verificationStatus === 'under_review' && !user?.documentsReuploadRequired;
+
+  const onBikePhotos = async (e) => {
+    const files = Array.from(e.target.files || []).slice(0, 5);
+    if (!files.length || !canEditDocs) return;
+    setUploading(true);
+    setMessage('');
+    try {
+      const urls = [];
+      for (const file of files) {
+        const url = await uploadFile(file, 'zumadash/rider/bike');
+        if (url) urls.push(url);
+      }
+      setBikeForm((f) => ({ ...f, photoUrls: [...(f.photoUrls || []), ...urls].slice(0, 10) }));
+    } catch (err) {
+      setMessage(err.response?.data?.message || 'Photo upload failed');
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  };
+
+  const onBikeDocs = async (e) => {
+    const files = Array.from(e.target.files || []).slice(0, 5);
+    if (!files.length || !canEditDocs) return;
+    setUploading(true);
+    setMessage('');
+    try {
+      const urls = [];
+      for (const file of files) {
+        const url = await uploadFile(file, 'zumadash/rider/docs');
+        if (url) urls.push(url);
+      }
+      setBikeForm((f) => ({
+        ...f,
+        documentUrls: [...(f.documentUrls || []), ...urls].slice(0, 10),
+      }));
+    } catch (err) {
+      setMessage(err.response?.data?.message || 'Document upload failed');
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  };
+
+  const onBikeVideo = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !canEditDocs) return;
+    setUploading(true);
+    setMessage('');
+    try {
+      const url = await uploadFile(file, 'zumadash/rider/bike-video');
+      if (url) setBikeForm((f) => ({ ...f, videoUrl: url }));
+    } catch (err) {
+      setMessage(err.response?.data?.message || 'Video upload failed');
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  };
+
   const saveBike = async (e) => {
     e.preventDefault();
+    if (!canEditDocs) return;
     setLoading(true);
+    setMessage('');
     try {
-      await api.put('/api/users/rider-documents', {
-        bikeDetails: [{ ...bikeForm }],
+      const res = await api.put('/api/users/rider-documents', {
+        bikeDetails: [
+          {
+            plateNumber: bikeForm.plate,
+            model: bikeForm.model,
+            color: bikeForm.color,
+            photoUrls: bikeForm.photoUrls || [],
+            documentUrls: bikeForm.documentUrls || [],
+            videoUrl: bikeForm.videoUrl || '',
+            photoUrl: (bikeForm.photoUrls || [])[0] || '',
+            papersUrl: (bikeForm.documentUrls || [])[0] || '',
+          },
+        ],
         nin: user?.nin,
         guarantor: user?.guarantor,
       });
-      setMessage('Bike details updated');
+      setMessage(res.data.message || 'Documents submitted for admin review');
+      if (refreshUser) await refreshUser();
     } catch (err) {
       setMessage(err.response?.data?.message || 'Failed');
     } finally {
@@ -153,6 +242,24 @@ const Profile = () => {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--gray-50)' }}>
       <RoleNavbar />
+      {uploading && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 10000,
+            background: 'rgba(15, 23, 42, 0.55)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#fff',
+            fontSize: 16,
+            fontWeight: 700,
+          }}
+        >
+          Uploading… please wait
+        </div>
+      )}
 
       <div className="container" style={{ padding: '24px 16px', maxWidth: 600 }}>
         {message && (
@@ -293,32 +400,136 @@ const Profile = () => {
 
         {section === 'docs' && user?.role === 'rider' && (
           <div className="card">
-            <h3 style={{ fontSize: 16, marginBottom: 8 }}>Bike details</h3>
-            <p style={{ fontSize: 13, color: 'var(--gray-500)', marginBottom: 16 }}>
+            <h3 style={{ fontSize: 16, marginBottom: 8 }}>Bike & documents</h3>
+            <p style={{ fontSize: 13, color: 'var(--gray-500)', marginBottom: 12 }}>
               Status: <strong>{user?.verificationStatus}</strong>
               {user?.nin && <> · NIN: {user.nin}</>}
             </p>
+            {canEditDocs && (
+              <div style={{ background: '#fef3c7', color: '#92400e', padding: 10, borderRadius: 8, marginBottom: 12, fontSize: 13 }}>
+                Admin requested a re-upload. Update photos, video and documents below, then submit for review.
+                You cannot take jobs until approved.
+                {user?.verificationNote ? ` — ${user.verificationNote}` : ''}
+                <div style={{ marginTop: 8 }}>
+                  You can also re-apply using the full form on{' '}
+                  <Link to="/become-a-rider" style={{ fontWeight: 700, color: '#92400e' }}>
+                    Become a rider
+                  </Link>
+                  .
+                </div>
+              </div>
+            )}
+            {docsUnderReview && (
+              <div style={{ background: '#dbeafe', color: '#1e40af', padding: 10, borderRadius: 8, marginBottom: 12, fontSize: 13 }}>
+                Documents submitted and under review. Fields are locked until admin approves, rejects, or requests another re-upload.
+              </div>
+            )}
+            {!canEditDocs && !docsUnderReview && (
+              <p style={{ fontSize: 12, color: 'var(--gray-500)', marginBottom: 12 }}>
+                Fields are read-only. They unlock only when admin requests a re-upload.
+              </p>
+            )}
+
+            <div style={{ marginBottom: 16 }}>
+              <strong style={{ fontSize: 14 }}>Photos</strong>
+              {(bikeForm.photoUrls || []).length === 0 ? (
+                <p style={{ fontSize: 13, color: 'var(--gray-500)' }}>No photos</p>
+              ) : (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                  {bikeForm.photoUrls.map((u) => (
+                    <a key={u} href={u} target="_blank" rel="noreferrer">
+                      <img src={u} alt="" style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 8 }} />
+                    </a>
+                  ))}
+                </div>
+              )}
+              {canEditDocs && (
+                <label className="btn btn-secondary" style={{ fontSize: 13, marginTop: 8, cursor: uploading ? 'wait' : 'pointer' }}>
+                  {uploading ? 'Uploading…' : 'Add photos'}
+                  <input type="file" accept="image/*" multiple hidden disabled={uploading} onChange={onBikePhotos} />
+                </label>
+              )}
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <strong style={{ fontSize: 14 }}>Video</strong>
+              {!bikeForm.videoUrl ? (
+                <p style={{ fontSize: 13, color: 'var(--gray-500)' }}>No video</p>
+              ) : (
+                <video controls src={bikeForm.videoUrl} style={{ width: '100%', maxWidth: 320, marginTop: 8, borderRadius: 8 }} />
+              )}
+              {canEditDocs && (
+                <label className="btn btn-secondary" style={{ fontSize: 13, marginTop: 8, cursor: uploading ? 'wait' : 'pointer', display: 'inline-block' }}>
+                  {uploading ? 'Uploading…' : 'Replace video'}
+                  <input type="file" accept="video/*" hidden disabled={uploading} onChange={onBikeVideo} />
+                </label>
+              )}
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <strong style={{ fontSize: 14 }}>Documents (PDF / files)</strong>
+              {(bikeForm.documentUrls || []).length === 0 ? (
+                <p style={{ fontSize: 13, color: 'var(--gray-500)' }}>No documents</p>
+              ) : (
+                <ul style={{ margin: '8px 0 0', paddingLeft: 18, fontSize: 13 }}>
+                  {bikeForm.documentUrls.map((u, i) => (
+                    <li key={u}>
+                      <a href={u} target="_blank" rel="noreferrer">
+                        Document {i + 1}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {canEditDocs && (
+                <label className="btn btn-secondary" style={{ fontSize: 13, marginTop: 8, cursor: uploading ? 'wait' : 'pointer', display: 'inline-block' }}>
+                  {uploading ? 'Uploading…' : 'Add documents'}
+                  <input type="file" accept="image/*,application/pdf,.pdf" multiple hidden disabled={uploading} onChange={onBikeDocs} />
+                </label>
+              )}
+            </div>
+
             <form onSubmit={saveBike}>
               <div className="form-group">
                 <label>Plate number</label>
-                <input value={bikeForm.plate} onChange={(e) => setBikeForm({ ...bikeForm, plate: e.target.value })} />
+                <input
+                  value={bikeForm.plate}
+                  disabled={!canEditDocs}
+                  readOnly={!canEditDocs}
+                  onChange={(e) => setBikeForm({ ...bikeForm, plate: e.target.value })}
+                  style={{ background: !canEditDocs ? '#f1f5f9' : undefined }}
+                />
               </div>
               <div className="form-group">
                 <label>Model</label>
-                <input value={bikeForm.model} onChange={(e) => setBikeForm({ ...bikeForm, model: e.target.value })} />
+                <input
+                  value={bikeForm.model}
+                  disabled={!canEditDocs}
+                  readOnly={!canEditDocs}
+                  onChange={(e) => setBikeForm({ ...bikeForm, model: e.target.value })}
+                  style={{ background: !canEditDocs ? '#f1f5f9' : undefined }}
+                />
               </div>
               <div className="form-group">
                 <label>Color</label>
-                <input value={bikeForm.color} onChange={(e) => setBikeForm({ ...bikeForm, color: e.target.value })} />
+                <input
+                  value={bikeForm.color}
+                  disabled={!canEditDocs}
+                  readOnly={!canEditDocs}
+                  onChange={(e) => setBikeForm({ ...bikeForm, color: e.target.value })}
+                  style={{ background: !canEditDocs ? '#f1f5f9' : undefined }}
+                />
               </div>
               {user?.guarantor?.name && (
                 <p style={{ fontSize: 13, color: 'var(--gray-600)', marginBottom: 12 }}>
                   Guarantor: {user.guarantor.name} ({user.guarantor.phone})
                 </p>
               )}
-              <button type="submit" className="btn btn-primary btn-block" disabled={loading}>
-                {loading ? 'Saving...' : 'Update bike details'}
-              </button>
+              {canEditDocs && (
+                <button type="submit" className="btn btn-primary btn-block" disabled={loading || uploading}>
+                  {loading ? 'Submitting…' : 'Submit re-upload for admin review'}
+                </button>
+              )}
             </form>
           </div>
         )}

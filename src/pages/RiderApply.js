@@ -19,6 +19,8 @@ const emptyBike = () => ({
 const RiderApply = ({ adminMode = false } = {}) => {
   const { platformName } = useBranding();
   const { isAuthenticated, user } = useAuth();
+  const isDocReupload = !!(user?.role === 'rider' && user?.documentsReuploadRequired);
+
   const [customers, setCustomers] = useState([]);
   const [selectedUserId, setSelectedUserId] = useState('');
 
@@ -370,6 +372,11 @@ const RiderApply = ({ adminMode = false } = {}) => {
             Individual or fleet. Fleet: enter how many bikes, then fill each bike section.
           </p>
 
+          {isDocReupload && (
+            <div style={{ background: '#fef3c7', color: '#92400e', padding: 12, borderRadius: 8, marginBottom: 16, fontSize: 14 }}>
+              Admin requested a document re-upload. Submit this form again with updated bike media and documents.
+            </div>
+          )}
           {!isAuthenticated && (
             <div style={{ background: '#fef3c7', padding: 12, borderRadius: 8, marginBottom: 16, fontSize: 14 }}>
               You need an account first.{' '}

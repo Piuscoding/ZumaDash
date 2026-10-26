@@ -398,14 +398,64 @@ const MerchantDashboard = () => {
 
         {tab === 'bikes' && (
           <div>
-            <p style={{ fontSize: 13, color: 'var(--gray-500)', marginBottom: 12 }}>Approved bikes (from fleet application)</p>
+            <p style={{ fontSize: 13, color: 'var(--gray-500)', marginBottom: 12 }}>
+              Approved bikes — open a card to view documents
+            </p>
             {bikes.length === 0 ? (
               <p style={{ color: 'var(--gray-500)' }}>No bikes yet</p>
             ) : (
               bikes.map((b) => (
-                <div key={b._id} className="card" style={{ marginBottom: 10, padding: 12 }}>
-                  <strong>{b.label || b.plateNumber}</strong>
-                  <div style={{ fontSize: 13 }}>{b.plateNumber} · {b.model} · {b.color}</div>
+                <div key={b._id} className="card" style={{ marginBottom: 10, padding: 14 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
+                    <div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                        <strong style={{ fontSize: 15 }}>{b.label || b.plateNumber}</strong>
+                        {(b.canEditDocuments || b.reuploadRequired) && (
+                          <span
+                            style={{
+                              fontSize: 11,
+                              fontWeight: 700,
+                              padding: '2px 8px',
+                              borderRadius: 999,
+                              background: '#fef3c7',
+                              color: '#92400e',
+                            }}
+                          >
+                            Re-upload required
+                          </span>
+                        )}
+                        {b.reuploadStatus === 'under_review' && !b.canEditDocuments && !b.reuploadRequired && (
+                          <span
+                            style={{
+                              fontSize: 11,
+                              fontWeight: 700,
+                              padding: '2px 8px',
+                              borderRadius: 999,
+                              background: '#dbeafe',
+                              color: '#1e40af',
+                            }}
+                          >
+                            Under review
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 13, color: 'var(--gray-600)', marginTop: 4 }}>
+                        {b.plateNumber} · {b.model || '—'} · {b.color || '—'}
+                      </div>
+                      {b.assignedRider && (
+                        <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 4 }}>
+                          Rider: {b.assignedRider.name || b.assignedRider.email}
+                          {b.assignedRider.demotedFromRider ? ' · suspended (docs)' : ''}
+                        </div>
+                      )}
+                    </div>
+                    <Link
+                      to={`/merchant/bikes/${b._id}`}
+                      style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary)', whiteSpace: 'nowrap' }}
+                    >
+                      {(b.canEditDocuments || b.reuploadRequired) ? 'Re-upload docs →' : 'View details →'}
+                    </Link>
+                  </div>
                 </div>
               ))
             )}

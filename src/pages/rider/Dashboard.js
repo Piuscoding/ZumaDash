@@ -59,6 +59,12 @@ const RiderDashboard = () => {
     <div style={{ minHeight: '100vh', background: 'var(--gray-50)' }}>
       <RoleNavbar />
       <div className="container" style={{ padding: '24px 16px', maxWidth: 800 }}>
+        {user?.documentsReuploadRequired && (
+          <div style={{ background: '#fef3c7', color: '#92400e', padding: 12, borderRadius: 8, marginBottom: 16, fontSize: 14 }}>
+            Admin requested document re-upload. You can use your dashboard, but you cannot accept jobs or withdraw until documents are approved again. Update them under Profile → Bike &amp; documents.
+          </div>
+        )}
+
         <div style={{ marginBottom: 20 }}>
           <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 6 }}>
             Hello, {user?.name?.split(' ')[0]} 👋

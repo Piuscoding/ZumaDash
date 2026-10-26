@@ -326,12 +326,8 @@ const BookSelf = () => {
     }
     setPriceError('');
     setForm((f) => ({ ...f, suggestedPrice: price }));
-    if (form.paymentMethod === 'bank_transfer') {
-      setPaymentConfirmed(false);
-      setStep(3);
-    } else {
-      submitBooking();
-    }
+    setPaymentConfirmed(false);
+    setStep(3);
   };
 
   const submitBooking = async () => {
@@ -396,7 +392,7 @@ const BookSelf = () => {
         <div className="card" style={{ marginTop: 16, padding: 20 }}>
           <h1 style={{ fontSize: 20, marginBottom: 4 }}>Book delivery</h1>
           <p style={{ fontSize: 13, color: 'var(--gray-500)', marginBottom: 16 }}>
-            Step {step} of {form.paymentMethod === 'bank_transfer' ? 3 : 2}
+            Step {step} of 3
           </p>
 
           {error && (
@@ -857,71 +853,116 @@ const BookSelf = () => {
                   disabled={loading || uploading}
                   onClick={goNextFromStep2}
                 >
-                  {form.paymentMethod === 'bank_transfer'
-                    ? 'Next: Payment details →'
-                    : loading
-                      ? 'Booking…'
-                      : 'Book delivery'}
+                  Confirm details →
                 </button>
               </div>
             </>
           )}
 
-          {step === 3 && form.paymentMethod === 'bank_transfer' && (
+          {step === 3 && (
             <>
-              <div
-                style={{
-                  background: '#f8fafc',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: 10,
-                  padding: 16,
-                  marginBottom: 16,
-                }}
-              >
-                <div style={{ marginBottom: 8 }}>
-                  <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Bank</div>
-                  <div style={{ fontSize: 16, fontWeight: 700 }}>{bankDetails.bankName || '—'}</div>
-                </div>
-                <div style={{ marginBottom: 8 }}>
-                  <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Account name</div>
-                  <div style={{ fontSize: 16, fontWeight: 700 }}>
-                    {bankDetails.accountName || '—'}
-                  </div>
-                </div>
-                <div style={{ marginBottom: 8 }}>
-                  <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Account number</div>
-                  <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: 1 }}>
-                    {bankDetails.accountNumber || '—'}
-                  </div>
-                </div>
-                <div style={{ marginBottom: vatAmt > 0 ? 8 : 0 }}>
-                  <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Commission</div>
-                  <div style={{ fontSize: 16, fontWeight: 700 }}>₦{commissionAmt.toLocaleString()}</div>
-                </div>
-                {vatAmt > 0 && (
+              {form.paymentMethod === 'bank_transfer' ? (
+                <div
+                  style={{
+                    background: '#f8fafc',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: 10,
+                    padding: 16,
+                    marginBottom: 16,
+                  }}
+                >
                   <div style={{ marginBottom: 8 }}>
-                    <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>
-                      VAT ({ownGoodsRates.vatPct}%)
-                    </div>
-                    <div style={{ fontSize: 16, fontWeight: 700 }}>₦{vatAmt.toLocaleString()}</div>
+                    <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Bank</div>
+                    <div style={{ fontSize: 16, fontWeight: 700 }}>{bankDetails.bankName || '—'}</div>
                   </div>
-                )}
-                <div>
-                  <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Total to pay</div>
-                  <div style={{ fontSize: 18, fontWeight: 800 }}>
-                    ₦{platformTakeAmount.toLocaleString()}
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Account name</div>
+                    <div style={{ fontSize: 16, fontWeight: 700 }}>
+                      {bankDetails.accountName || '—'}
+                    </div>
+                  </div>
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Account number</div>
+                    <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: 1 }}>
+                      {bankDetails.accountNumber || '—'}
+                    </div>
+                  </div>
+                  <div style={{ marginBottom: vatAmt > 0 ? 8 : 0 }}>
+                    <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Commission</div>
+                    <div style={{ fontSize: 16, fontWeight: 700 }}>₦{commissionAmt.toLocaleString()}</div>
+                  </div>
+                  {vatAmt > 0 && (
+                    <div style={{ marginBottom: 8 }}>
+                      <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>
+                        VAT ({ownGoodsRates.vatPct}%)
+                      </div>
+                      <div style={{ fontSize: 16, fontWeight: 700 }}>₦{vatAmt.toLocaleString()}</div>
+                    </div>
+                  )}
+                  <div>
+                    <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Total to pay</div>
+                    <div style={{ fontSize: 18, fontWeight: 800 }}>
+                      ₦{platformTakeAmount.toLocaleString()}
+                    </div>
                   </div>
                 </div>
-              </div>
+              ) : (
+                <div
+                  style={{
+                    background: '#fff7ed',
+                    border: '1px solid #fdba74',
+                    borderRadius: 12,
+                    padding: 20,
+                    marginBottom: 16,
+                  }}
+                >
+                  <h3 style={{ fontSize: 16, marginBottom: 12, color: '#c2410c' }}>
+                    Cash on delivery — cost summary
+                  </h3>
+                  <p style={{ fontSize: 13, color: 'var(--gray-700)', marginBottom: 16 }}>
+                    Confirm the platform fee below. Own-goods: you pay commission
+                    {vatAmt > 0 ? ' + VAT' : ''} (fleet rider earns ₦0 on this job).
+                  </p>
+                  <div style={{ background: 'white', borderRadius: 10, padding: 16 }}>
+                    <div style={{ marginBottom: 10 }}>
+                      <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Commission</div>
+                      <div style={{ fontSize: 18, fontWeight: 700 }}>
+                        ₦{commissionAmt.toLocaleString()}
+                      </div>
+                    </div>
+                    {vatAmt > 0 && (
+                      <div style={{ marginBottom: 10 }}>
+                        <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>
+                          VAT ({ownGoodsRates.vatPct}%)
+                        </div>
+                        <div style={{ fontSize: 16, fontWeight: 700 }}>₦{vatAmt.toLocaleString()}</div>
+                      </div>
+                    )}
+                    <div
+                      style={{
+                        borderTop: vatAmt > 0 ? '1px solid #e2e8f0' : 'none',
+                        paddingTop: vatAmt > 0 ? 10 : 0,
+                      }}
+                    >
+                      <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Total to pay</div>
+                      <div style={{ fontSize: 22, fontWeight: 800, color: '#c2410c' }}>
+                        ₦{platformTakeAmount.toLocaleString()}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
-              <div className="form-group">
-                <label>Payment reference (optional)</label>
-                <input
-                  value={form.paymentReference}
-                  onChange={(e) => setForm({ ...form, paymentReference: e.target.value })}
-                  placeholder="Transfer reference"
-                />
-              </div>
+              {form.paymentMethod === 'bank_transfer' && (
+                <div className="form-group">
+                  <label>Payment reference (optional)</label>
+                  <input
+                    value={form.paymentReference}
+                    onChange={(e) => setForm({ ...form, paymentReference: e.target.value })}
+                    placeholder="Transfer reference"
+                  />
+                </div>
+              )}
 
               <label
                 style={{
@@ -940,7 +981,9 @@ const BookSelf = () => {
                   style={{ marginTop: 3, width: 18, height: 18 }}
                 />
                 <span>
-                  I confirm I transferred ₦{platformTakeAmount.toLocaleString()} to this account.
+                  {form.paymentMethod === 'bank_transfer'
+                    ? `I confirm I transferred ₦${platformTakeAmount.toLocaleString()} to this account.`
+                    : `I confirm the total is ₦${platformTakeAmount.toLocaleString()} (cash on delivery).`}
                 </span>
               </label>
 
