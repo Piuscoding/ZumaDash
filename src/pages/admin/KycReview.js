@@ -5,9 +5,13 @@ import { useAuth } from '../../context/AuthContext';
 const isPdfUrl = (url) => {
   const u = String(url || '').toLowerCase();
   if (!u) return false;
-  if (u.includes('/image/upload/')) return false; // Cloudinary image
-  if (u.includes('/uploads/documents/')) return /\.pdf(\?|$)/.test(u) || !/\.(jpe?g|png|gif|webp|mp4|webm)(\?|$)/.test(u);
-  return /\.pdf(\?|$)/.test(u) || u.includes('/raw/upload');
+  // Prefer image rendering for common image hosts / extensions
+  if (u.includes('/image/upload/')) return false;
+  if (/\.(jpe?g|png|gif|webp|bmp|heic)(\?|$)/i.test(u)) return false;
+  if (u.includes('res.cloudinary.com') && !u.includes('/raw/upload')) return false;
+  if (/\.pdf(\?|$)/.test(u)) return true;
+  if (u.includes('/raw/upload') && u.includes('.pdf')) return true;
+  return false;
 };
 
 const MediaCard = ({ url, label, onDelete }) => {
@@ -23,10 +27,11 @@ const MediaCard = ({ url, label, onDelete }) => {
             src={url}
             alt={label || ''}
             referrerPolicy="no-referrer"
+            crossOrigin="anonymous"
             onError={() => setBroken(true)}
             style={{
-              width: 160,
-              height: 160,
+              width: 180,
+              height: 180,
               objectFit: 'cover',
               borderRadius: 12,
               border: '1px solid var(--gray-200)',
@@ -38,21 +43,26 @@ const MediaCard = ({ url, label, onDelete }) => {
       ) : (
         <div
           style={{
-            width: 160,
-            height: 100,
+            width: 180,
+            height: pdf ? 100 : 180,
             borderRadius: 12,
             border: '1px solid var(--gray-200)',
             background: '#f3f4f6',
             display: 'flex',
+            flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
             fontSize: 12,
             color: 'var(--gray-500)',
             padding: 8,
             textAlign: 'center',
+            gap: 6,
           }}
         >
-          {pdf ? 'Document / PDF' : 'Preview unavailable'}
+          <span>{pdf ? 'PDF document' : 'Image preview blocked — use Open'}</span>
+          <a href={url} target="_blank" rel="noreferrer" style={{ fontWeight: 700, color: 'var(--primary)' }}>
+            Open full size
+          </a>
         </div>
       )}
       <div style={{ fontSize: 12, fontWeight: 600, marginTop: 6 }}>{label}</div>
@@ -97,13 +107,19 @@ const KycReview = () => {
     load();
   }, [filter]);
 
-  const act = async (id, action) => {
+  const act = async (id, action, noteArg) => {
     setMsg('');
     setErr('');
-    const note = action === 'reject' ? window.prompt('Rejection reason') || 'Documents could not be verified' : undefined;
+    let note = noteArg;
+    if (action === 'reject' && (note == null || note === '')) {
+      note = window.prompt('Rejection reason') || 'Documents could not be verified';
+    }
+    if (action === 'revoke' && (note == null || note === '')) {
+      note = 'Verification revoked by admin — please re-submit valid documents';
+    }
     try {
       await api.put(`/api/admin/customers/${id}/kyc`, { action, note });
-      setMsg(`KYC ${action}d`);
+      setMsg(action === 'revoke' ? 'KYC verification revoked' : `KYC ${action}d`);
       load();
     } catch (e) {
       setErr(e.response?.data?.message || 'Action failed');
@@ -207,12 +223,31 @@ const KycReview = () => {
             )}
 
             {c.kycStatus === 'under_review' && canAct && (
-              <div style={{ marginTop: 10, gap: 8, display: 'flex' }}>
+              <div style={{ marginTop: 10, gap: 8, display: 'flex', flexWrap: 'wrap' }}>
                 <button type="button" className="btn btn-primary" onClick={() => act(c._id, 'approve')}>
                   Approve
                 </button>
                 <button type="button" className="btn btn-secondary" onClick={() => act(c._id, 'reject')}>
                   Reject
+                </button>
+              </div>
+            )}
+            {c.kycStatus === 'approved' && canAct && (
+              <div style={{ marginTop: 10 }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ borderColor: '#b91c1c', color: '#b91c1c' }}
+                  onClick={() => {
+                    const note = window.prompt(
+                      'Reason for revoking KYC verification (shown to customer):',
+                      'Verification revoked — please re-submit valid documents'
+                    );
+                    if (note == null) return;
+                    act(c._id, 'revoke', note);
+                  }}
+                >
+                  Revoke verification
                 </button>
               </div>
             )}

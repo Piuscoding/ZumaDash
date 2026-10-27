@@ -3,6 +3,8 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useBranding, BrandLogo } from '../context/BrandingContext';
 import api from '../services/api';
+import { getPendingBooking, createJobFromPending, reportGuestBookingHold } from '../utils/pendingBooking';
+import { ensureCloudinaryUrl } from '../services/upload';
 
 const OTP_SECONDS = 300; // 5:00
 
@@ -21,6 +23,7 @@ const VerifyWhatsApp = () => {
     location.state?.preferEmail || location.state?.otpChannel === 'email' || sessionStorage.getItem('zumadash_otp_channel') === 'email' ? 'email' : 'whatsapp'
   );
   const inputs = useRef([]);
+  const redirectingRef = useRef(false);
 
   useEffect(() => {
     if (location.state?.preferEmail || location.state?.otpChannel === 'email') {
@@ -47,8 +50,16 @@ const VerifyWhatsApp = () => {
       navigate('/admin', { replace: true });
       return;
     }
-    if (user && (user.whatsappVerified === true || user.emailVerified === true)) {
-      redirectByRole(user);
+
+    // If already verified (either channel), finish pending booking — once
+    const emailOk = user?.emailVerified === true;
+    const waOk = user?.whatsappVerified === true;
+    if (user && (emailOk || waOk) && !redirectingRef.current) {
+      redirectingRef.current = true;
+      completePendingThenGo(user).finally(() => {
+        // allow retry only if still on this page with pending
+      });
+      return;
     }
   }, [token, user, authLoading]);
 
@@ -58,13 +69,85 @@ const VerifyWhatsApp = () => {
     return () => clearInterval(t);
   }, [secondsLeft]);
 
-  const redirectByRole = (u) => {
-    if (!u) return;
-    if (u.role === 'rider') navigate('/rider', { replace: true });
-    else if (u.role === 'admin') navigate('/admin', { replace: true });
-    else if (u.role === 'merchant') navigate('/merchant', { replace: true });
-    else navigate('/dashboard', { replace: true });
+  const completePendingThenGo = async (u) => {
+    const who = {
+      role: (u && u.role) || (user && user.role) || 'customer',
+      name: (u && u.name) || (user && user.name) || '',
+      phone: (u && u.phone) || (user && user.phone) || '',
+      email: (u && u.email) || (user && user.email) || '',
+      kycStatus: (u && u.kycStatus) || (user && user.kycStatus) || 'none',
+      _id: (u && (u._id || u.id)) || (user && (user._id || user.id)),
+    };
+
+    const tok = localStorage.getItem('zumadash_token');
+    if (tok) api.defaults.headers.common['Authorization'] = `Bearer ${tok}`;
+
+    const pending = getPendingBooking();
+    const role = who.role;
+
+    // Non-customer with a guest booking: report to admin, keep pending, go to their dashboard
+    if (pending && role && role !== 'customer') {
+      try {
+        await reportGuestBookingHold(api, who);
+      } catch (e) {
+        console.error('[VerifyWhatsApp] guest hold report failed', e);
+      }
+      const roleLabel =
+        role === 'merchant' ? 'merchant' : role === 'rider' ? 'rider' : role;
+      const holdMsg = `This account is a ${roleLabel}. Customer deliveries can't be booked on a ${roleLabel} account. Use a customer account, or contact support if you already paid. Your booking details were kept for support to recover.`;
+      try {
+        sessionStorage.setItem('zumadash_role_booking_msg', holdMsg);
+      } catch (_) {}
+      if (role === 'rider') navigate('/rider', { replace: true });
+      else if (role === 'merchant') navigate('/merchant', { replace: true });
+      else if (role === 'admin' || role === 'manager') navigate('/admin', { replace: true });
+      else navigate('/dashboard', { replace: true });
+      return;
+    }
+
+    if (role === 'rider') {
+      navigate('/rider', { replace: true });
+      return;
+    }
+    if (role === 'admin' || role === 'manager') {
+      navigate('/admin', { replace: true });
+      return;
+    }
+    if (role === 'merchant') {
+      navigate('/merchant', { replace: true });
+      return;
+    }
+
+    // Customer: create job from guest pending if any → track page
+    if (!pending) {
+      navigate('/dashboard', { replace: true });
+      return;
+    }
+
+    try {
+      const job = await createJobFromPending(api, who, ensureCloudinaryUrl);
+      const jobId = job && (job._id || job.id);
+      if (jobId) {
+        navigate(`/track/${jobId}`, { replace: true });
+        return;
+      }
+      setError(
+        'Verified, but your saved booking could not be created. Open Book delivery again or contact support if you paid.'
+      );
+      navigate('/dashboard', { replace: true });
+    } catch (e) {
+      console.error('[VerifyWhatsApp] createJobFromPending failed', e);
+      setError(
+        (e.response && e.response.data && e.response.data.message) ||
+          e.message ||
+          'Verified, but failed to create your delivery.'
+      );
+      navigate('/dashboard', { replace: true });
+    }
   };
+
+  // backward-compatible name used elsewhere in this file
+  const redirectByRole = completePendingThenGo;
 
   const code = digits.join('');
 
@@ -115,7 +198,8 @@ const VerifyWhatsApp = () => {
         });
       }
       setInfo(res.data.message || 'Verified!');
-      redirectByRole(u);
+      redirectingRef.current = true;
+      await completePendingThenGo(u || user);
     } catch (err) {
       setError(err.response?.data?.message || 'Verification failed');
     } finally {
@@ -129,9 +213,47 @@ const VerifyWhatsApp = () => {
     setLoading(true);
     try {
       const res = await api.post('/api/auth/otp/send', { channel });
+      const msg = String(res.data.message || '');
+      const already =
+        /already verified/i.test(msg) ||
+        (channel === 'email' && user?.emailVerified === true) ||
+        (channel === 'whatsapp' && user?.whatsappVerified === true);
+
+      if (already) {
+        // This channel is done — try the other, or continue if either is verified
+        const other = channel === 'email' ? 'whatsapp' : 'email';
+        const otherOk =
+          other === 'email' ? user?.emailVerified === true : user?.whatsappVerified === true;
+        const thisOk =
+          channel === 'email' ? user?.emailVerified === true : user?.whatsappVerified === true;
+        if (thisOk || user?.emailVerified === true || user?.whatsappVerified === true) {
+          setInfo(msg || 'Already verified — continuing…');
+          setLoading(false);
+          await redirectByRole(user);
+          return;
+        }
+        // Try other channel once
+        const res2 = await api.post('/api/auth/otp/send', { channel: other });
+        const used2 = res2.data.channel || other;
+        setChannelHint(used2 === 'email' ? 'email' : 'whatsapp');
+        try {
+          sessionStorage.setItem('zumadash_otp_channel', used2 === 'email' ? 'email' : 'whatsapp');
+        } catch (_) {}
+        setInfo(
+          res2.data.message ||
+            (used2 === 'email' ? 'Code sent to your email' : 'Code sent to your WhatsApp')
+        );
+        setSecondsLeft(OTP_SECONDS);
+        setDigits(['', '', '', '', '', '']);
+        inputs.current[0]?.focus();
+        return;
+      }
+
       const used = res.data.channel || channel;
       setChannelHint(used === 'email' ? 'email' : 'whatsapp');
-      try { sessionStorage.setItem('zumadash_otp_channel', used === 'email' ? 'email' : 'whatsapp'); } catch (_) {}
+      try {
+        sessionStorage.setItem('zumadash_otp_channel', used === 'email' ? 'email' : 'whatsapp');
+      } catch (_) {}
       setInfo(
         res.data.message ||
           (used === 'email' ? 'Code sent to your email' : 'Code sent to your WhatsApp')
@@ -140,7 +262,13 @@ const VerifyWhatsApp = () => {
       setDigits(['', '', '', '', '', '']);
       inputs.current[0]?.focus();
     } catch (err) {
-      setError(err.response?.data?.message || 'Could not resend code');
+      const msg = err.response?.data?.message || 'Could not resend code';
+      if (/already verified/i.test(msg)) {
+        setInfo(msg);
+        await redirectByRole(user);
+        return;
+      }
+      setError(msg);
     } finally {
       setLoading(false);
     }

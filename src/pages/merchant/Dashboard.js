@@ -5,6 +5,16 @@ import api from '../../services/api';
 import MerchantNavbar from '../../components/MerchantNavbar';
 
 const MerchantDashboard = () => {
+  const [roleBookingMsg, setRoleBookingMsg] = useState('');
+  useEffect(() => {
+    try {
+      const m = sessionStorage.getItem('zumadash_role_booking_msg');
+      if (m) {
+        setRoleBookingMsg(m);
+        sessionStorage.removeItem('zumadash_role_booking_msg');
+      }
+    } catch (_) {}
+  }, []);
   const { user, logout, refreshUser } = useAuth();
   const [tab, setTab] = useState('overview');
   const [stats, setStats] = useState(null);
@@ -254,6 +264,9 @@ const MerchantDashboard = () => {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--gray-50)' }}>
       <MerchantNavbar />
+      {roleBookingMsg && (
+        <div style={{ margin: '12px 16px', padding: 12, borderRadius: 8, background: '#fef3c7', color: '#92400e', fontSize: 14, fontWeight: 600 }}>{roleBookingMsg}</div>
+      )}
 
       <div className="container" style={{ padding: '20px 16px', maxWidth: 900 }}>
 

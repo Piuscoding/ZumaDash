@@ -69,7 +69,8 @@ const AdminDashboard = () => {
   const [bankKycList, setBankKycList] = useState([]);
   const [commissionSettlements, setCommissionSettlements] = useState([]);
   const [commissionPayments, setCommissionPayments] = useState([]);
-  const [paymentSubTab, setPaymentSubTab] = useState('transfers'); // transfers | clearances | withdraws | bank | settlements
+  const [paymentSubTab, setPaymentSubTab] = useState('transfers'); // transfers | clearances | withdraws | bank | settlements | guestHolds
+  const [guestHolds, setGuestHolds] = useState([]);
   const [timelineJob, setTimelineJob] = useState(null);
   const [riderDetail, setRiderDetail] = useState(null);
   const [merchants, setMerchants] = useState([]);
@@ -137,6 +138,13 @@ const AdminDashboard = () => {
       }
       try {
         const cs = await api.get('/api/admin/payment-desk/commission-settlements');
+        try {
+          const gh = await api.get('/api/admin/guest-booking-holds?status=open');
+          setGuestHolds(gh.data.holds || []);
+        } catch (_) {
+          setGuestHolds([]);
+        }
+
         setCommissionSettlements(cs.data.settlements || []);
         try {
           const cp = await api.get('/api/admin/payment-desk/commission-payments');
@@ -1065,6 +1073,7 @@ const AdminDashboard = () => {
                     ['bank', `Bank KYC (${bankKycList.length})`],
                     ['settlements', 'Settlements'],
                     ['commPay', `Comm. pay (${commissionPayments.filter((x) => x.status === 'pending_review').length})`],
+                    ['guestHolds', `Guest holds (${(guestHolds || []).length})`],
                   ].map(([key, label]) => (
                     <button
                       key={key}
@@ -1077,6 +1086,78 @@ const AdminDashboard = () => {
                     </button>
                   ))}
                 </div>
+
+                {paymentSubTab === 'guestHolds' && (
+                  <div>
+                    <p style={{ fontSize: 13, color: 'var(--gray-500)', marginBottom: 12 }}>
+                      Guest bookings completed by someone who then logged in as a <strong>rider</strong> or <strong>merchant</strong>.
+                      The job was <strong>not</strong> created on their account. Review payment references and create/link a customer booking manually if they paid.
+                    </p>
+                    {(guestHolds || []).length === 0 ? (
+                      <p style={{ color: 'var(--gray-500)' }}>No open guest booking holds</p>
+                    ) : (
+                      (guestHolds || []).map((h) => (
+                        <div key={h._id} className="card" style={{ marginBottom: 12, padding: 14 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                            <div>
+                              <strong>{h.attemptedName || h.attemptedBy?.name || 'User'}</strong>
+                              <span className="badge" style={{ marginLeft: 8 }}>{h.attemptedRole || h.attemptedBy?.role}</span>
+                              <div style={{ fontSize: 13, color: 'var(--gray-600)', marginTop: 4 }}>
+                                {h.attemptedEmail || h.attemptedBy?.email} · {h.attemptedPhone || h.attemptedBy?.phone}
+                              </div>
+                              <div style={{ fontSize: 14, marginTop: 6 }}>
+                                <strong>₦{(h.suggestedPrice || 0).toLocaleString()}</strong>
+                                {' · '}
+                                {h.paymentMethod === 'cash' ? 'COD' : 'Bank'}
+                                {h.paymentReference ? ` · Ref: ${h.paymentReference}` : ' · No payment ref'}
+                              </div>
+                              <div style={{ fontSize: 13, marginTop: 6 }}>
+                                <div><strong>Pickup:</strong> {h.pickupDescription || '—'}</div>
+                                <div><strong>Drop-off:</strong> {h.dropoffDescription || '—'}</div>
+                              </div>
+                              <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 4 }}>
+                                {h.createdAt ? new Date(h.createdAt).toLocaleString() : ''}
+                              </div>
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                              <button
+                                type="button"
+                                className="btn btn-primary"
+                                style={{ padding: '8px 12px', fontSize: 12 }}
+                                onClick={async () => {
+                                  try {
+                                    await api.put(`/api/admin/guest-booking-holds/${h._id}`, { action: 'resolve', note: 'Handled' });
+                                    setGuestHolds((list) => list.filter((x) => x._id !== h._id));
+                                    setMessage('Guest hold marked resolved');
+                                  } catch (e) {
+                                    setMessage(e.response?.data?.message || 'Failed');
+                                  }
+                                }}
+                              >
+                                Mark resolved
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                style={{ padding: '8px 12px', fontSize: 12 }}
+                                onClick={async () => {
+                                  try {
+                                    await api.put(`/api/admin/guest-booking-holds/${h._id}`, { action: 'dismiss' });
+                                    setGuestHolds((list) => list.filter((x) => x._id !== h._id));
+                                  } catch (e) {
+                                    setMessage(e.response?.data?.message || 'Failed');
+                                  }
+                                }}
+                              >
+                                Dismiss
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
 
                 {paymentSubTab === 'transfers' && (
                   <div>

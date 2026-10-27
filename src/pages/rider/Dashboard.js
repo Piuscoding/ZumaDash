@@ -5,6 +5,16 @@ import api from '../../services/api';
 import RoleNavbar from '../../components/RoleNavbar';
 
 const RiderDashboard = () => {
+  const [roleBookingMsg, setRoleBookingMsg] = useState('');
+  useEffect(() => {
+    try {
+      const m = sessionStorage.getItem('zumadash_role_booking_msg');
+      if (m) {
+        setRoleBookingMsg(m);
+        sessionStorage.removeItem('zumadash_role_booking_msg');
+      }
+    } catch (_) {}
+  }, []);
   const { user } = useAuth();
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -58,6 +68,9 @@ const RiderDashboard = () => {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--gray-50)' }}>
       <RoleNavbar />
+      {roleBookingMsg && (
+        <div style={{ margin: '12px 16px', padding: 12, borderRadius: 8, background: '#fef3c7', color: '#92400e', fontSize: 14, fontWeight: 600 }}>{roleBookingMsg}</div>
+      )}
       <div className="container" style={{ padding: '24px 16px', maxWidth: 800 }}>
         {user?.documentsReuploadRequired && (
           <div style={{ background: '#fef3c7', color: '#92400e', padding: 12, borderRadius: 8, marginBottom: 16, fontSize: 14 }}>

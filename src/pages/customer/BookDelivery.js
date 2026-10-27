@@ -323,18 +323,35 @@ const BookDelivery = ({ adminMode = false } = {}) => {
     dropoffDescription: form.dropoffDescription,
     packageSize: form.packageSize,
     packageDescription: form.packageDescription,
-    paymentMethod: (form.paymentMethod === 'cash' && bookingUser?.kycStatus !== 'approved') ? 'bank_transfer' : form.paymentMethod,
+    paymentMethod:
+      form.paymentMethod === 'cash' && bookingUser?.kycStatus !== 'approved'
+        ? 'bank_transfer'
+        : form.paymentMethod,
     suggestedPrice: Number(form.suggestedPrice),
-        locationMode: bookingMode === 'map' && mapQuote?.locationMode === 'map' ? 'map' : 'text',
-        mapDistanceKm: bookingMode === 'map' && mapQuote?.locationMode === 'map' ? mapQuote.mapDistanceKm : undefined,
-        routeGeometry: bookingMode === 'map' && mapQuote?.locationMode === 'map' ? mapQuote.routeGeometry : undefined,
-        osrmDurationSec: bookingMode === 'map' && mapQuote?.locationMode === 'map' ? mapQuote.osrmDurationSec : undefined,
-        displayDurationSec: bookingMode === 'map' && mapQuote?.locationMode === 'map' ? mapQuote.displayDurationSec : undefined,
+    locationMode: bookingMode === 'map' && mapQuote?.locationMode === 'map' ? 'map' : 'text',
+    mapDistanceKm:
+      bookingMode === 'map' && mapQuote?.locationMode === 'map' ? mapQuote.mapDistanceKm : undefined,
+    routeGeometry:
+      bookingMode === 'map' && mapQuote?.locationMode === 'map' ? mapQuote.routeGeometry : undefined,
+    osrmDurationSec:
+      bookingMode === 'map' && mapQuote?.locationMode === 'map' ? mapQuote.osrmDurationSec : undefined,
+    displayDurationSec:
+      bookingMode === 'map' && mapQuote?.locationMode === 'map' ? mapQuote.displayDurationSec : undefined,
+    routingProvider:
+      bookingMode === 'map' && mapQuote?.locationMode === 'map' ? mapQuote.routingProvider : undefined,
+    pickupCoordinates:
+      bookingMode === 'map' && pickupPin
+        ? { lat: pickupPin.lat, lng: pickupPin.lng }
+        : undefined,
+    dropoffCoordinates:
+      bookingMode === 'map' && dropPin ? { lat: dropPin.lat, lng: dropPin.lng } : undefined,
     distanceBand: 'same_zone',
     contactName: (adminMode ? bookingUser?.name : user?.name) || '',
     contactPhone: (adminMode ? bookingUser?.phone : user?.phone) || '',
     pickupPhotos: form.pickupPhotos,
     dropoffPhotos: form.dropoffPhotos,
+    bookingVoiceNote: form.bookingVoiceNote || '',
+    bookingVideo: form.bookingVideo || '',
     paymentReference: form.paymentReference || '',
   });
 
@@ -420,6 +437,33 @@ const BookDelivery = ({ adminMode = false } = {}) => {
     setStep(3);
   };
 
+  const persistPendingAnd = async (next) => {
+    // Ensure guest voice/video are data URLs (blob: cannot be restored after navigation)
+    let voice = form.bookingVoiceNote || '';
+    let video = form.bookingVideo || '';
+    try {
+      if (voice && String(voice).startsWith('blob:')) {
+        const res = await fetch(voice);
+        const blob = await res.blob();
+        voice = await fileToDataUrl(new File([blob], 'voice.webm', { type: blob.type || 'audio/webm' }));
+      }
+      if (video && String(video).startsWith('blob:')) {
+        const res = await fetch(video);
+        const blob = await res.blob();
+        video = await fileToDataUrl(new File([blob], 'video.mp4', { type: blob.type || 'video/mp4' }));
+      }
+    } catch (e) {
+      console.warn('pending media normalize', e);
+    }
+    const payload = {
+      ...buildPendingPayload(),
+      bookingVoiceNote: voice || '',
+      bookingVideo: video || '',
+    };
+    savePendingBooking(payload);
+    next();
+  };
+
   const finishOrAuthGate = () => {
     if (adminMode) {
       createJobNow();
@@ -433,18 +477,15 @@ const BookDelivery = ({ adminMode = false } = {}) => {
       setError('Only customer accounts can book deliveries.');
       return;
     }
-    savePendingBooking(buildPendingPayload());
-    setStep(4);
+    persistPendingAnd(() => setStep(4));
   };
 
   const goToRegister = () => {
-    savePendingBooking(buildPendingPayload());
-    navigate('/register', { state: { fromBooking: true } });
+    persistPendingAnd(() => navigate('/register', { state: { fromBooking: true } }));
   };
 
   const goToLogin = () => {
-    savePendingBooking(buildPendingPayload());
-    navigate('/login', { state: { fromBooking: true } });
+    persistPendingAnd(() => navigate('/login', { state: { fromBooking: true } }));
   };
 
   const backLink = isAuthenticated ? '/dashboard' : '/';
@@ -499,21 +540,25 @@ const BookDelivery = ({ adminMode = false } = {}) => {
       rec.onstop = async () => {
         stream.getTracks().forEach((tr) => tr.stop());
         const blob = new Blob(chunks, { type: 'audio/webm' });
-        const localUrl = URL.createObjectURL(blob);
-        // Immediate playback while Cloudinary upload runs
-        setForm((f) => ({ ...f, bookingVoiceNote: localUrl }));
         const file = new File([blob], `voice-${Date.now()}.webm`, { type: 'audio/webm' });
         try {
           setUploading(true);
-          // Must use uploadFile(File) — ensureCloudinaryUrl expects a data: URL string
-          const url = await uploadFile(file, 'zumadash/booking/voice');
-          if (url && typeof url === 'string') {
-            try { URL.revokeObjectURL(localUrl); } catch (_) {}
-            setForm((f) => ({ ...f, bookingVoiceNote: url }));
+          if (isAuthenticated) {
+            const localUrl = URL.createObjectURL(blob);
+            setForm((f) => ({ ...f, bookingVoiceNote: localUrl }));
+            const url = await uploadFile(file, 'zumadash/booking/voice');
+            if (url && typeof url === 'string') {
+              try { URL.revokeObjectURL(localUrl); } catch (_) {}
+              setForm((f) => ({ ...f, bookingVoiceNote: url }));
+            }
+          } else {
+            // Guest: persist as data URL so pending booking survives login
+            const dataUrl = await fileToDataUrl(file);
+            setForm((f) => ({ ...f, bookingVoiceNote: dataUrl || '' }));
           }
         } catch (err) {
           console.error(err);
-          // keep local blob so user can still hear it; block submit until re-record/upload
+          setError(err.response?.data?.message || 'Voice note upload failed. Please try again.');
         } finally {
           setUploading(false);
         }
@@ -963,17 +1008,25 @@ const BookDelivery = ({ adminMode = false } = {}) => {
                   name="suggestedPrice"
                   value={form.suggestedPrice}
                   onChange={(e) => {
+                    if (bookingMode === 'map' && mapQuote?.locationMode === 'map') return;
                     setPriceError('');
                     handleChange(e);
                   }}
                   min={adminMode ? 1 : 1}
+                  readOnly={bookingMode === 'map' && mapQuote?.locationMode === 'map'}
+                  disabled={bookingMode === 'map' && mapQuote?.locationMode === 'map'}
+                  style={
+                    bookingMode === 'map' && mapQuote?.locationMode === 'map'
+                      ? { background: '#f1f5f9', cursor: 'not-allowed' }
+                      : undefined
+                  }
                 />
                 {priceError ? (
                   <small style={{ color: 'var(--danger)', fontSize: 12, display: 'block', marginTop: 4 }}>{priceError}</small>
                 ) : (
                   <small style={{ color: 'var(--gray-500)', fontSize: 12 }}>
                     {bookingMode === 'map' && mapQuote?.locationMode === 'map'
-                      ? 'Suggested from map distance. You can adjust; riders can still offer.'
+                      ? 'Map suggested price (not editable).'
                       : adminMode
                         ? 'Admin booking — no minimum enforced here.'
                         : 'Minimum ₦1,500 in text mode. You can edit this amount.'}

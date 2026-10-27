@@ -5,7 +5,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../context/I18nContext';
 import api from '../services/api';
-import { getPendingBooking, createJobFromPending } from '../utils/pendingBooking';
+import { getPendingBooking, createJobFromPending, reportGuestBookingHold } from '../utils/pendingBooking';
 import { ensureCloudinaryUrl } from '../services/upload';
 
 const Login = () => {
@@ -38,32 +38,82 @@ const Login = () => {
         return;
       }
 
-      if (user.needsWhatsappVerification || user.whatsappVerified === false) {
+      // Backend policy: either WhatsApp OR email verified is enough to continue
+      const hasVerifiedChannel =
+        user.whatsappVerified === true || user.emailVerified === true;
+      if (user.needsWhatsappVerification && !hasVerifiedChannel) {
         navigate('/verify-whatsapp', {
           replace: true,
           state: {
             otpChannel: user.otpChannel || (/email/i.test(user.message || user.loginMessage || '') ? 'email' : 'whatsapp'),
             preferEmail: (user.otpChannel === 'email') || /email/i.test(user.message || user.loginMessage || ''),
             otpMessage: user.message || user.loginMessage || '',
+            fromBooking: !!getPendingBooking(),
+          },
+        });
+        return;
+      }
+      if (!hasVerifiedChannel && user.role !== 'admin' && user.role !== 'manager') {
+        navigate('/verify-whatsapp', {
+          replace: true,
+          state: {
+            otpChannel: user.otpChannel || 'whatsapp',
+            preferEmail: user.otpChannel === 'email',
+            otpMessage: user.message || user.loginMessage || '',
+            fromBooking: !!getPendingBooking(),
           },
         });
         return;
       }
 
-      // Complete pending guest booking if any
-      if (getPendingBooking() && user.role === 'customer') {
-        try {
-          const job = await createJobFromPending(api, user, ensureCloudinaryUrl);
-          if (job) {
-            navigate(`/track/${job._id}`);
+      // Guest pending booking (only after verified)
+      if (getPendingBooking()) {
+        const role = user.role || 'customer';
+        const tok = localStorage.getItem('zumadash_token');
+        if (tok) api.defaults.headers.common['Authorization'] = `Bearer ${tok}`;
+
+        if (role === 'customer') {
+          try {
+            const job = await createJobFromPending(api, user, ensureCloudinaryUrl);
+            const jobId = job && (job._id || job.id);
+            if (jobId) {
+              navigate(`/track/${jobId}`, { replace: true });
+              return;
+            }
+            setError(
+              'Logged in, but your saved booking could not be created. Open Book delivery and try again, or contact support if you already paid.'
+            );
+            setLoading(false);
+            return;
+          } catch (jobErr) {
+            console.error(jobErr);
+            setError(
+              jobErr.response?.data?.message ||
+                jobErr.message ||
+                'Logged in, but failed to create your delivery. Please book again from Dashboard.'
+            );
+            setLoading(false);
             return;
           }
-        } catch (jobErr) {
-          console.error(jobErr);
-          setError(jobErr.response?.data?.message || 'Logged in, but failed to create your delivery. Please book again from Dashboard.');
-          setLoading(false);
-          return;
         }
+
+        // Rider / merchant / other — do not create job; keep pending + report for admin
+        try {
+          await reportGuestBookingHold(api, user);
+        } catch (e) {
+          console.error(e);
+        }
+        const roleLabel = role === 'merchant' ? 'merchant' : role === 'rider' ? 'rider' : role;
+        const holdMsg = `This account is a ${roleLabel}. Customer deliveries can't be booked on a ${roleLabel} account. Use a customer account, or contact support if you already paid. Your booking details were kept for support to recover.`;
+        try {
+          sessionStorage.setItem('zumadash_role_booking_msg', holdMsg);
+        } catch (_) {}
+        setLoading(false);
+        if (role === 'rider') navigate('/rider');
+        else if (role === 'merchant') navigate('/merchant');
+        else if (role === 'admin' || role === 'manager') navigate('/admin');
+        else setError(holdMsg);
+        return;
       }
 
       if (user.role === 'rider') navigate('/rider');

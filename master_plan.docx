@@ -888,6 +888,3 @@ Implement this document exactly: ZumaDash Map Mode + Live Tracking + Suggested P
 - Map-mode track page = map + route + LIVE rider movement via Socket.io; keep status/photo/WhatsApp as well.
 - Do not remove bargaining, payment gates, or clearance flows.
 - Extend the existing codebase; match existing auth, job, and notify patterns.
-
-
-

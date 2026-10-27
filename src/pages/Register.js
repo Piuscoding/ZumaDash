@@ -31,7 +31,8 @@ const Register = () => {
       // Step 1 – always verify before dashboard (email or WhatsApp OTP)
       if (
         user?.role !== 'admin' &&
-        (user?.needsWhatsappVerification || user?.whatsappVerified !== true)
+        user?.whatsappVerified !== true &&
+        user?.emailVerified !== true
       ) {
         // Ensure token is readable before verify page mounts (AuthContext setState is async)
         const tok = localStorage.getItem('zumadash_token');
@@ -44,21 +45,34 @@ const Register = () => {
             preferEmail: user?.otpChannel === 'email',
             otpChannel: user?.otpChannel || 'whatsapp',
             otpMessage: user?.otpMessage || '',
+            fromBooking: !!getPendingBooking(),
           },
         });
-        return;
+        return; // OTP first — pending booking is completed on VerifyWhatsApp after code succeeds
       }
 
       if (getPendingBooking()) {
         try {
+          const tok = localStorage.getItem('zumadash_token');
+          if (tok) api.defaults.headers.common['Authorization'] = `Bearer ${tok}`;
           const job = await createJobFromPending(api, user, ensureCloudinaryUrl);
-          if (job) {
-            navigate(`/track/${job._id}`);
+          const jobId = job && (job._id || job.id);
+          if (jobId) {
+            navigate(`/track/${jobId}`, { replace: true });
             return;
           }
+          setError(
+            'Account created, but your saved booking could not be created. Please book again from Dashboard or contact support if you paid.'
+          );
+          setLoading(false);
+          return;
         } catch (jobErr) {
           console.error(jobErr);
-          setError(jobErr.response?.data?.message || 'Account created, but failed to create your delivery. Please book again from Dashboard.');
+          setError(
+            jobErr.response?.data?.message ||
+              jobErr.message ||
+              'Account created, but failed to create your delivery. Please book again from Dashboard.'
+          );
           setLoading(false);
           return;
         }

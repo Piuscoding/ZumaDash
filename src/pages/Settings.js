@@ -5,7 +5,7 @@ import { useI18n } from '../context/I18nContext';
 import LanguageSwitcher from '../components/LanguageSwitcher';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
-import { ensureCloudinaryUrl } from '../services/upload';
+import { uploadFile } from '../services/upload';
 
 const Settings = () => {
   const { t, lang } = useI18n();
@@ -34,9 +34,17 @@ const Settings = () => {
     }
   }, [user]);
 
-  const uploadFile = async (file) => {
+  const [uploading, setUploading] = useState(false);
+
+  const uploadKycImage = async (file) => {
     if (!file) return '';
-    return (await ensureCloudinaryUrl(file)) || '';
+    setUploading(true);
+    try {
+      // Same Cloudinary path style as Become a rider ID photos
+      return (await uploadFile(file, 'zumadash/kyc')) || '';
+    } finally {
+      setUploading(false);
+    }
   };
 
   const saveToggles = async () => {
@@ -106,6 +114,11 @@ const Settings = () => {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--gray-50)' }}>
       <RoleNavbar />
+      {uploading && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(15,23,42,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700 }}>
+          Uploading… please wait
+        </div>
+      )}
       <div className="container" style={{ maxWidth: 560, padding: '24px 16px 48px' }}>
         <h1 style={{ fontSize: 22, marginBottom: 8 }}>Settings</h1>
         <p style={{ color: 'var(--gray-500)', fontSize: 14, marginBottom: 20 }}>
@@ -212,10 +225,15 @@ const Settings = () => {
                     <input
                       type="file"
                       accept="image/*"
-                      onChange={async (e) => setNinPhoto(await uploadFile(e.target.files?.[0]))}
+                      onChange={async (e) => setNinPhoto(await uploadKycImage(e.target.files?.[0]))}
                       required={!ninPhoto}
                     />
-                    {ninPhoto && <p style={{ fontSize: 12, color: 'var(--success)' }}>Uploaded</p>}
+                    {ninPhoto && (
+                      <div style={{ marginTop: 8 }}>
+                        <img src={ninPhoto} alt="NIN" style={{ width: 120, height: 120, objectFit: 'cover', borderRadius: 8, border: '1px solid #e2e8f0' }} />
+                        <p style={{ fontSize: 12, color: 'var(--success)', marginTop: 4 }}>Uploaded</p>
+                      </div>
+                    )}
                   </div>
                 </>
               ) : (
@@ -230,21 +248,36 @@ const Settings = () => {
                   </div>
                   <div className="form-group">
                     <label>Front photo</label>
-                    <input type="file" accept="image/*" onChange={async (e) => setLicenceFront(await uploadFile(e.target.files?.[0]))} required={!licenceFront} />
-                    {licenceFront && <p style={{ fontSize: 12, color: 'var(--success)' }}>Uploaded</p>}
+                    <input type="file" accept="image/*" onChange={async (e) => setLicenceFront(await uploadKycImage(e.target.files?.[0]))} required={!licenceFront} />
+                    {licenceFront && (
+                      <div style={{ marginTop: 8 }}>
+                        <img src={licenceFront} alt="Licence front" style={{ width: 120, height: 120, objectFit: 'cover', borderRadius: 8, border: '1px solid #e2e8f0' }} />
+                        <p style={{ fontSize: 12, color: 'var(--success)', marginTop: 4 }}>Uploaded</p>
+                      </div>
+                    )}
                   </div>
                   <div className="form-group">
                     <label>Back photo</label>
-                    <input type="file" accept="image/*" onChange={async (e) => setLicenceBack(await uploadFile(e.target.files?.[0]))} required={!licenceBack} />
-                    {licenceBack && <p style={{ fontSize: 12, color: 'var(--success)' }}>Uploaded</p>}
+                    <input type="file" accept="image/*" onChange={async (e) => setLicenceBack(await uploadKycImage(e.target.files?.[0]))} required={!licenceBack} />
+                    {licenceBack && (
+                      <div style={{ marginTop: 8 }}>
+                        <img src={licenceBack} alt="Licence back" style={{ width: 120, height: 120, objectFit: 'cover', borderRadius: 8, border: '1px solid #e2e8f0' }} />
+                        <p style={{ fontSize: 12, color: 'var(--success)', marginTop: 4 }}>Uploaded</p>
+                      </div>
+                    )}
                   </div>
                 </>
               )}
 
               <div className="form-group">
                 <label>Selfie of person submitting</label>
-                <input type="file" accept="image/*" capture="user" onChange={async (e) => setSelfie(await uploadFile(e.target.files?.[0]))} required={!selfie} />
-                {selfie && <p style={{ fontSize: 12, color: 'var(--success)' }}>Uploaded</p>}
+                <input type="file" accept="image/*" capture="user" onChange={async (e) => setSelfie(await uploadKycImage(e.target.files?.[0]))} required={!selfie} />
+                {selfie && (
+                  <div style={{ marginTop: 8 }}>
+                    <img src={selfie} alt="Selfie" style={{ width: 120, height: 120, objectFit: 'cover', borderRadius: 8, border: '1px solid #e2e8f0' }} />
+                    <p style={{ fontSize: 12, color: 'var(--success)', marginTop: 4 }}>Uploaded</p>
+                  </div>
+                )}
               </div>
 
               <button type="submit" className="btn btn-primary" disabled={kycBusy}>

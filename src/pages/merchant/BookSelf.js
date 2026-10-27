@@ -827,14 +827,26 @@ const BookSelf = () => {
                   min={1}
                   value={form.suggestedPrice}
                   onChange={(e) => {
+                    if (bookingMode === 'map' && mapQuote?.locationMode === 'map') return;
                     setPriceError('');
                     setForm({ ...form, suggestedPrice: e.target.value });
                   }}
+                  readOnly={bookingMode === 'map' && mapQuote?.locationMode === 'map'}
+                  disabled={bookingMode === 'map' && mapQuote?.locationMode === 'map'}
+                  style={
+                    bookingMode === 'map' && mapQuote?.locationMode === 'map'
+                      ? { background: '#f1f5f9', cursor: 'not-allowed' }
+                      : undefined
+                  }
                 />
                 {priceError ? (
                   <small style={{ color: 'var(--danger)', fontSize: 12, display: 'block', marginTop: 4 }}>{priceError}</small>
                 ) : (
-                  <small style={{ color: 'var(--gray-500)', fontSize: 12 }}>Minimum ₦1,500. You can edit this amount.</small>
+                  <small style={{ color: 'var(--gray-500)', fontSize: 12 }}>
+                    {bookingMode === 'map' && mapQuote?.locationMode === 'map'
+                      ? 'Map suggested price (not editable).'
+                      : 'Minimum ₦1,500 in text mode. You can edit this amount.'}
+                  </small>
                 )}
               </div>
               <div className="form-group">
