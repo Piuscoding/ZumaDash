@@ -168,6 +168,7 @@ export async function createJobFromPending(api, user, ensureCloudinaryUrl) {
       routingProvider: isMap ? pending.routingProvider : undefined,
       bookingVoiceNote: bookingVoiceNote || undefined,
       bookingVideo: bookingVideo || undefined,
+      guestBooking: true,
     };
 
     console.info('[pendingBooking] POST /api/jobs', {

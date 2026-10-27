@@ -61,6 +61,19 @@ const AdminDashboard = () => {
   const [reportDays, setReportDays] = useState(30);
   const [reportSegment, setReportSegment] = useState('all');
   const [financeDays, setFinanceDays] = useState(30);
+  const [financePeriod, setFinancePeriod] = useState(''); // today|week|month|year or ''
+  const [reportPeriod, setReportPeriod] = useState('');
+  const [deleteJobCode, setDeleteJobCode] = useState('');
+  const [deleteVatCode, setDeleteVatCode] = useState('');
+  const [customYear, setCustomYear] = useState(String(new Date().getFullYear()));
+  const [customMonth, setCustomMonth] = useState('');
+  const [customDay, setCustomDay] = useState('');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
+  const [audienceUsers, setAudienceUsers] = useState([]);
+  const [notifyUserId, setNotifyUserId] = useState('');
+  const [emailUserId, setEmailUserId] = useState('');
+  const [exportBusy, setExportBusy] = useState(false);
   const [exportFrom, setExportFrom] = useState('');
   const [exportTo, setExportTo] = useState('');
   const [pendingTransfers, setPendingTransfers] = useState([]);
@@ -87,7 +100,7 @@ const AdminDashboard = () => {
           api.get('/api/settings'),
           api.get('/api/admin/customers'),
           api.get('/api/admin/disputes'),
-          api.get(`/api/admin/finance?days=${financeDays || 30}`),
+          api.get(`/api/admin/finance?days=${financeDays || 30}${financePeriod ? `&period=${financePeriod}` : ''}`),
           api.get('/api/admin/email-templates').catch(() => ({ data: { templates: [] } })),
         ]);
       setStats(statsRes.data.stats);
@@ -194,6 +207,41 @@ const AdminDashboard = () => {
   };
 
 
+  const buildPeriodParams = () => {
+    const params = new URLSearchParams();
+    // Prefer explicit from/to
+    if (customFrom || customTo) {
+      if (customFrom) params.set('from', customFrom);
+      if (customTo) params.set('to', customTo);
+      return params;
+    }
+    // Year / month / day custom
+    if (customYear && (customMonth || customDay || financePeriod === 'custom' || reportPeriod === 'custom' || !financePeriod)) {
+      // only when custom mode uses Y/M/D fields
+    }
+    return params;
+  };
+
+  const appendPeriodToParams = (params, period, days) => {
+    if (customFrom || customTo) {
+      if (customFrom) params.set('from', customFrom);
+      if (customTo) params.set('to', customTo);
+      return;
+    }
+    if (period === 'custom' || (!period && (customYear || customMonth || customDay))) {
+      if (customYear) params.set('year', customYear);
+      if (customMonth) params.set('month', customMonth);
+      if (customDay) params.set('day', customDay);
+      if (!customYear && !customMonth && !customDay) {
+        params.set('days', String(days || 30));
+      }
+      return;
+    }
+    if (period) params.set('period', period);
+    else params.set('days', String(days || 30));
+  };
+
+
   const downloadAdminCsv = async () => {
     try {
       const params = new URLSearchParams();
@@ -210,13 +258,38 @@ const AdminDashboard = () => {
       window.URL.revokeObjectURL(url);
       setMessage('CSV export downloaded');
     } catch (e) {
-      setMessage(e.response?.data?.message || 'Export failed');
+      setMessage(e.response?.data?.message || 'CSV export failed');
     }
   };
 
-  const loadFinance = async (days = financeDays) => {
+  const exportPdf = async () => {
+    setExportBusy(true);
     try {
-      const res = await api.get(`/api/admin/finance?days=${days}`);
+      const params = new URLSearchParams();
+      appendPeriodToParams(params, reportPeriod || financePeriod, reportDays || financeDays);
+      if (reportSegment) params.set('segment', reportSegment);
+      const res = await api.get(`/api/admin/reports/export-pdf?${params.toString()}`, {
+        responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `zumadash-admin-report.pdf`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+      setMessage('PDF export downloaded');
+    } catch (e) {
+      setMessage(e.response?.data?.message || 'PDF export failed');
+    } finally {
+      setExportBusy(false);
+    }
+  };
+
+  const loadFinance = async (days = financeDays, period = financePeriod) => {
+    try {
+      const params = new URLSearchParams();
+      appendPeriodToParams(params, period, days);
+      const res = await api.get(`/api/admin/finance?${params.toString()}`);
       setFinance({
         riders: res.data.riders || [],
         totals: res.data.totals || {},
@@ -232,9 +305,14 @@ const AdminDashboard = () => {
     }
   };
 
-  const loadReport = async (days = reportDays, segment = reportSegment) => {
+  const loadReport = async (days = reportDays, segment = reportSegment, period = reportPeriod) => {
     try {
-      const res = await api.get(`/api/admin/reports?days=${days}&segment=${segment}`);
+      const res = await (async () => {
+        const params = new URLSearchParams();
+        appendPeriodToParams(params, period, days);
+        params.set('segment', segment || 'all');
+        return api.get(`/api/admin/reports?${params.toString()}`);
+      })();
       setReport(res.data);
     } catch (err) {
       setMessage(err.response?.data?.message || 'Report failed');
@@ -242,8 +320,8 @@ const AdminDashboard = () => {
   };
 
   useEffect(() => { fetchData(); }, []);
-  useEffect(() => { if (tab === 'reports') loadReport(reportDays, reportSegment); }, [tab, reportDays, reportSegment]);
-  useEffect(() => { if (tab === 'finance' || tab === 'withdrawals') loadFinance(financeDays); }, [tab, financeDays]);
+  useEffect(() => { if (tab === 'reports') loadReport(reportDays, reportSegment, reportPeriod); }, [tab, reportDays, reportSegment, reportPeriod]);
+  useEffect(() => { if (tab === 'finance' || tab === 'withdrawals') loadFinance(financeDays, financePeriod); }, [tab, financeDays, financePeriod]);
 
   useEffect(() => {
     api.get('/api/admin/me/permissions')
@@ -461,6 +539,66 @@ const AdminDashboard = () => {
     }
   };
 
+  const deleteAllJobs = async () => {
+    if (!window.confirm('Delete ALL jobs in the database? This cannot be undone.')) return;
+    if (!window.confirm('Final confirmation: permanently delete every delivery job?')) return;
+    try {
+      const res = await api.delete('/api/admin/jobs/all');
+      setMessage(res.data.message || 'All jobs deleted');
+      const jobsRes = await api.get('/api/admin/jobs');
+      // refresh local jobs if held in state — overview reload
+      window.location.reload();
+    } catch (e) {
+      setMessage(e.response?.data?.message || 'Delete all jobs failed');
+    }
+  };
+
+  const deleteJobByCode = async () => {
+    const code = (deleteJobCode || '').trim();
+    if (!code) {
+      setMessage('Enter a job ID');
+      return;
+    }
+    if (!window.confirm(`Delete job ${code}? This cannot be undone.`)) return;
+    try {
+      const res = await api.delete(`/api/admin/jobs/by-code/${encodeURIComponent(code)}`);
+      setMessage(res.data.message || 'Job deleted');
+      setDeleteJobCode('');
+    } catch (e) {
+      setMessage(e.response?.data?.message || 'Delete job failed');
+    }
+  };
+
+  const deleteVatAll = async () => {
+    if (!window.confirm('Clear VAT amount on ALL jobs that have VAT?')) return;
+    try {
+      const res = await api.delete('/api/admin/vat/all');
+      setMessage(res.data.message || 'VAT cleared');
+      loadFinance(financeDays, financePeriod);
+      loadReport(reportDays, reportSegment, reportPeriod);
+    } catch (e) {
+      setMessage(e.response?.data?.message || 'Clear VAT failed');
+    }
+  };
+
+  const deleteVatByCode = async () => {
+    const code = (deleteVatCode || '').trim();
+    if (!code) {
+      setMessage('Enter a job ID to clear its VAT');
+      return;
+    }
+    if (!window.confirm(`Clear VAT on job ${code}?`)) return;
+    try {
+      const res = await api.delete(`/api/admin/vat/by-job/${encodeURIComponent(code)}`);
+      setMessage(res.data.message || 'VAT cleared');
+      setDeleteVatCode('');
+      loadFinance(financeDays, financePeriod);
+      loadReport(reportDays, reportSegment, reportPeriod);
+    } catch (e) {
+      setMessage(e.response?.data?.message || 'Clear VAT failed');
+    }
+  };
+
   const markWithdrawPaid = async (id) => {
     const ref = window.prompt('Payment reference (optional):') || '';
     try {
@@ -542,7 +680,7 @@ const AdminDashboard = () => {
     e.preventDefault();
     setNotifySending(true);
     try {
-      const res = await api.post('/api/admin/notify', notifyForm);
+      const res = await api.post('/api/admin/notify', { ...notifyForm, userId: notifyUserId || undefined });
       setMessage(res.data.message);
       setNotifyForm({ audience: 'all_customers', title: '', message: '' });
     } catch (err) { setMessage(err.response?.data?.message || 'Failed'); }
@@ -569,7 +707,7 @@ const AdminDashboard = () => {
     e.preventDefault();
     setEmailSending(true);
     try {
-      const res = await api.post('/api/admin/email-send', emailForm);
+      const res = await api.post('/api/admin/email-send', { ...emailForm, userId: emailUserId || undefined });
       setMessage(res.data.message);
     } catch (err) { setMessage(err.response?.data?.message || 'Failed'); }
     finally { setEmailSending(false); }
@@ -657,6 +795,12 @@ const AdminDashboard = () => {
                   ['Total Jobs', stats.totalJobs], ['Active', stats.activeJobs], ["Today", stats.todaysJobs],
                   ['Riders', stats.totalRiders], ['Pending', stats.pendingRiders], ['Customers', stats.totalCustomers],
                   ['Disputes', stats.openDisputes],
+                  ['Merchant jobs', stats.merchantJobsTotal || 0],
+                  ['Merchant OK', stats.merchantJobsSuccess || 0],
+                  ['Merchant cancelled', stats.merchantJobsFail || 0],
+                  ['Guest jobs', stats.guestJobsTotal || 0],
+                  ['Guest OK', stats.guestJobsSuccess || 0],
+                  ['Guest cancelled', stats.guestJobsFail || 0],
                 ].map(([label, value]) => (
                   <div key={label} className="card" style={{ textAlign: 'center', padding: 14 }}>
                     <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--primary)' }}>{value}</div>
@@ -999,6 +1143,23 @@ const AdminDashboard = () => {
                     <button type="button" className="btn btn-secondary" style={{ fontSize: 12, padding: '6px 10px' }} onClick={() => purgeDataCategory('job_media')}>Clear all job media</button>
                     <button type="button" className="btn btn-secondary" style={{ fontSize: 12, padding: '6px 10px' }} onClick={() => purgeDataCategory('withdrawals')}>Clear all withdraw records</button>
                     <button type="button" className="btn btn-secondary" style={{ fontSize: 12, padding: '6px 10px' }} onClick={() => purgeDataCategory('notifications')}>Clear all notifications</button>
+                  </div>
+                  <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--gray-200)' }}>
+                    <strong style={{ fontSize: 13 }}>Delete jobs (admin only)</strong>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8, alignItems: 'center' }}>
+                      <button type="button" className="btn btn-secondary" style={{ fontSize: 12, padding: '6px 10px', borderColor: '#b91c1c', color: '#b91c1c' }} onClick={deleteAllJobs}>
+                        Delete ALL jobs
+                      </button>
+                      <input
+                        value={deleteJobCode}
+                        onChange={(e) => setDeleteJobCode(e.target.value)}
+                        placeholder="Job ID e.g. ZD-1234-ABCD"
+                        style={{ padding: '6px 10px', fontSize: 13, minWidth: 180, flex: '1 1 160px' }}
+                      />
+                      <button type="button" className="btn btn-secondary" style={{ fontSize: 12, padding: '6px 10px' }} onClick={deleteJobByCode}>
+                        Delete this job
+                      </button>
+                    </div>
                   </div>
                   <p style={{ fontSize: 11, color: 'var(--gray-500)', marginTop: 8, marginBottom: 0 }}>Managers cannot use these tools. Cancel job works for corridor / any active job.</p>
                 </div>
@@ -1445,13 +1606,80 @@ const AdminDashboard = () => {
 {tab === 'finance' && (
               <div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16, alignItems: 'center' }}>
-                  <select value={financeDays} onChange={(e) => setFinanceDays(Number(e.target.value))}>
-                    <option value={7}>Last 7 days</option>
-                    <option value={14}>Last 14 days</option>
-                    <option value={30}>Last 30 days</option>
-                    <option value={90}>Last 90 days</option>
+                  <select
+                    value={financePeriod || 'custom'}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (v === 'custom') {
+                        setFinancePeriod('custom');
+                      } else {
+                        setFinancePeriod(v);
+                        setCustomFrom('');
+                        setCustomTo('');
+                      }
+                    }}
+                  >
+                    <option value="today">Today</option>
+                    <option value="week">This week</option>
+                    <option value="month">This month</option>
+                    <option value="year">This year</option>
+                    <option value="custom">Custom date…</option>
                   </select>
-                  <button type="button" className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: 13 }} onClick={() => loadFinance()}>Refresh</button>
+                  {financePeriod === 'custom' && (
+                    <select value={financeDays} onChange={(e) => setFinanceDays(Number(e.target.value))}>
+                      <option value={7}>Last 7 days</option>
+                      <option value={14}>Last 14 days</option>
+                      <option value={30}>Last 30 days</option>
+                      <option value={90}>Last 90 days</option>
+                    </select>
+                  )}
+
+                  {(financePeriod === 'custom' || !financePeriod) && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, width: '100%', alignItems: 'center' }}>
+                      <label style={{ fontSize: 12, color: 'var(--gray-500)' }}>Year</label>
+                      <input type="number" min={2020} max={2100} value={customYear} onChange={(e) => setCustomYear(e.target.value)} style={{ width: 90, padding: '6px 8px', fontSize: 13 }} placeholder="Year" />
+                      <label style={{ fontSize: 12, color: 'var(--gray-500)' }}>Month</label>
+                      <input type="number" min={1} max={12} value={customMonth} onChange={(e) => setCustomMonth(e.target.value)} style={{ width: 70, padding: '6px 8px', fontSize: 13 }} placeholder="1-12" />
+                      <label style={{ fontSize: 12, color: 'var(--gray-500)' }}>Day</label>
+                      <input type="number" min={1} max={31} value={customDay} onChange={(e) => setCustomDay(e.target.value)} style={{ width: 70, padding: '6px 8px', fontSize: 13 }} placeholder="1-31" />
+                      <span style={{ fontSize: 12, color: 'var(--gray-400)' }}>or range:</span>
+                      <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} style={{ padding: '6px 8px', fontSize: 13 }} />
+                      <span style={{ fontSize: 12 }}>→</span>
+                      <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} style={{ padding: '6px 8px', fontSize: 13 }} />
+                    </div>
+                  )}
+
+                  <button type="button" className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: 13 }} onClick={() => loadFinance(financeDays, financePeriod)}>Refresh</button>
+                  {user?.role === 'admin' && (
+                    <button type="button" className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: 13 }} disabled={exportBusy} onClick={exportPdf}>Export PDF</button>
+                  )}
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10, marginBottom: 16 }}>
+                  <div className="card" style={{ textAlign: 'center', padding: 10 }}>
+                    <div style={{ fontSize: 11, color: 'var(--gray-500)' }}>Merchant jobs</div>
+                    <div style={{ fontSize: 18, fontWeight: 800 }}>{finance.period?.merchantJobsTotal || 0}</div>
+                  </div>
+                  <div className="card" style={{ textAlign: 'center', padding: 10 }}>
+                    <div style={{ fontSize: 11, color: 'var(--gray-500)' }}>Merchant successful</div>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: '#166534' }}>{finance.period?.merchantJobsSuccess || 0}</div>
+                  </div>
+                  <div className="card" style={{ textAlign: 'center', padding: 10 }}>
+                    <div style={{ fontSize: 11, color: 'var(--gray-500)' }}>Merchant cancelled</div>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: '#991b1b' }}>{finance.period?.merchantJobsFail || 0}</div>
+                  </div>
+                  <div className="card" style={{ textAlign: 'center', padding: 10 }}>
+                    <div style={{ fontSize: 11, color: 'var(--gray-500)' }}>Guest jobs</div>
+                    <div style={{ fontSize: 18, fontWeight: 800 }}>{finance.period?.guestJobsTotal || 0}</div>
+                  </div>
+                  <div className="card" style={{ textAlign: 'center', padding: 10 }}>
+                    <div style={{ fontSize: 11, color: 'var(--gray-500)' }}>Guest successful</div>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: '#166534' }}>{finance.period?.guestJobsSuccess || 0}</div>
+                  </div>
+                  <div className="card" style={{ textAlign: 'center', padding: 10 }}>
+                    <div style={{ fontSize: 11, color: 'var(--gray-500)' }}>Guest cancelled</div>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: '#991b1b' }}>{finance.period?.guestJobsFail || 0}</div>
+                  </div>
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 16 }}>
@@ -1577,6 +1805,26 @@ const AdminDashboard = () => {
                   </div>
                 )}
 
+                {user?.role === 'admin' && (
+                  <div className="card" style={{ padding: 12, marginBottom: 16 }}>
+                    <strong style={{ fontSize: 13 }}>VAT records (admin only)</strong>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8, alignItems: 'center' }}>
+                      <button type="button" className="btn btn-secondary" style={{ fontSize: 12, padding: '6px 10px', borderColor: '#b91c1c', color: '#b91c1c' }} onClick={deleteVatAll}>
+                        Clear all VAT
+                      </button>
+                      <input
+                        value={deleteVatCode}
+                        onChange={(e) => setDeleteVatCode(e.target.value)}
+                        placeholder="Job ID to clear VAT"
+                        style={{ padding: '6px 10px', fontSize: 13, minWidth: 160, flex: '1 1 140px' }}
+                      />
+                      <button type="button" className="btn btn-secondary" style={{ fontSize: 12, padding: '6px 10px' }} onClick={deleteVatByCode}>
+                        Clear VAT on job
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {(finance.vatRows || []).length > 0 && (
                   <div className="card" style={{ padding: 12, marginBottom: 16, overflowX: 'auto' }}>
                     <h3 style={{ fontSize: 15, marginBottom: 10 }}>VAT collections (period)</h3>
@@ -1588,6 +1836,7 @@ const AdminDashboard = () => {
                           <th style={{ padding: '8px 6px' }}>Name</th>
                           <th style={{ padding: '8px 6px' }}>VAT</th>
                           <th style={{ padding: '8px 6px' }}>Date</th>
+                          {user?.role === 'admin' ? <th style={{ padding: '8px 6px' }}>Action</th> : null}
                         </tr>
                       </thead>
                       <tbody>
@@ -1600,6 +1849,27 @@ const AdminDashboard = () => {
                             <td style={{ padding: '8px 6px', whiteSpace: 'nowrap' }}>
                               {row.collectedAt ? new Date(row.collectedAt).toLocaleString() : '—'}
                             </td>
+                            {user?.role === 'admin' ? (
+                              <td style={{ padding: '8px 6px' }}>
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary"
+                                  style={{ fontSize: 11, padding: '4px 8px' }}
+                                  onClick={async () => {
+                                    if (!window.confirm(`Clear VAT on ${row.jobId}?`)) return;
+                                    try {
+                                      await api.delete(`/api/admin/vat/by-job/${encodeURIComponent(row.jobId)}`);
+                                      setMessage(`VAT cleared on ${row.jobId}`);
+                                      loadFinance(financeDays, financePeriod);
+                                    } catch (e) {
+                                      setMessage(e.response?.data?.message || 'Failed');
+                                    }
+                                  }}
+                                >
+                                  Clear
+                                </button>
+                              </td>
+                            ) : null}
                           </tr>
                         ))}
                       </tbody>
@@ -1677,12 +1947,46 @@ const AdminDashboard = () => {
                 <h2 style={{ fontSize: 18, marginBottom: 12 }}>In-app notification</h2>
                 <form onSubmit={sendNotify}>
                   <div className="form-group"><label>Audience</label>
-                    <select value={notifyForm.audience} onChange={(e) => setNotifyForm({ ...notifyForm, audience: e.target.value })}>
+                    <select
+                      value={notifyForm.audience}
+                      onChange={async (e) => {
+                        const audience = e.target.value;
+                        setNotifyForm({ ...notifyForm, audience });
+                        setNotifyUserId('');
+                        if (audience === 'one_customer' || audience === 'one_rider' || audience === 'one_merchant') {
+                          const role = audience.replace('one_', '');
+                          try {
+                            const res = await api.get(`/api/admin/users-picker?role=${role}`);
+                            setAudienceUsers(res.data.users || []);
+                          } catch (_) {
+                            setAudienceUsers([]);
+                          }
+                        } else {
+                          setAudienceUsers([]);
+                        }
+                      }}
+                    >
                       <option value="all_customers">All customers</option>
                       <option value="all_riders">All riders</option>
-                        <option value="all_merchants">All merchants</option>
+                      <option value="all_merchants">All merchants</option>
+                      <option value="one_customer">One customer</option>
+                      <option value="one_rider">One rider</option>
+                      <option value="one_merchant">One merchant</option>
                     </select>
                   </div>
+                  {(notifyForm.audience === 'one_customer' || notifyForm.audience === 'one_rider' || notifyForm.audience === 'one_merchant') && (
+                    <div className="form-group">
+                      <label>Select {notifyForm.audience.replace('one_', '')}</label>
+                      <select value={notifyUserId} onChange={(e) => setNotifyUserId(e.target.value)} required>
+                        <option value="">— Choose —</option>
+                        {audienceUsers.map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.name} · {u.email || u.phone || u.id}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   <div className="form-group"><label>Title</label><input required value={notifyForm.title} onChange={(e) => setNotifyForm({ ...notifyForm, title: e.target.value })} /></div>
                   <div className="form-group"><label>Message</label><textarea required rows={4} value={notifyForm.message} onChange={(e) => setNotifyForm({ ...notifyForm, message: e.target.value })} /></div>
                   <button className="btn btn-primary btn-block" disabled={notifySending}>{notifySending ? 'Sending...' : 'Send'}</button>
@@ -1696,11 +2000,43 @@ const AdminDashboard = () => {
                   <h2 style={{ fontSize: 18, marginBottom: 12 }}>Send email</h2>
                   <form onSubmit={sendEmail}>
                     <div className="form-group"><label>Audience</label>
-                      <select value={emailForm.audience} onChange={(e) => setEmailForm({ ...emailForm, audience: e.target.value })}>
+                      <select
+                        value={emailForm.audience}
+                        onChange={async (e) => {
+                          const audience = e.target.value;
+                          setEmailForm({ ...emailForm, audience });
+                          setEmailUserId('');
+                          if (audience === 'one_customer' || audience === 'one_rider' || audience === 'one_merchant') {
+                            const role = audience.replace('one_', '');
+                            try {
+                              const res = await api.get(`/api/admin/users-picker?role=${role}`);
+                              setAudienceUsers(res.data.users || []);
+                            } catch (_) {
+                              setAudienceUsers([]);
+                            }
+                          } else setAudienceUsers([]);
+                        }}
+                      >
                         <option value="all_customers">All customers</option>
                         <option value="all_riders">All riders</option>
                         <option value="all_merchants">All merchants</option>
+                        <option value="one_customer">One customer</option>
+                        <option value="one_rider">One rider</option>
+                        <option value="one_merchant">One merchant</option>
                       </select>
+                      {(emailForm.audience === 'one_customer' || emailForm.audience === 'one_rider' || emailForm.audience === 'one_merchant') && (
+                        <div className="form-group" style={{ marginTop: 12 }}>
+                          <label>Select {emailForm.audience.replace('one_', '')}</label>
+                          <select value={emailUserId} onChange={(e) => setEmailUserId(e.target.value)} required>
+                            <option value="">— Choose —</option>
+                            {audienceUsers.map((u) => (
+                              <option key={u.id} value={u.id}>
+                                {u.name} · {u.email || u.phone || u.id}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
                     </div>
                     <div className="form-group"><label>Use template (optional)</label>
                       <select value={emailForm.templateId} onChange={(e) => setEmailForm({ ...emailForm, templateId: e.target.value })}>
@@ -1751,12 +2087,46 @@ const AdminDashboard = () => {
 
               <div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16, alignItems: 'center' }}>
-                  <select value={reportDays} onChange={(e) => setReportDays(Number(e.target.value))}>
-                    <option value={7}>Last 7 days</option>
-                    <option value={14}>Last 14 days</option>
-                    <option value={30}>Last 30 days</option>
-                    <option value={90}>Last 90 days</option>
+                  <select
+                    value={reportPeriod || 'custom'}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (v === 'custom') setReportPeriod('custom');
+                      else {
+                        setReportPeriod(v);
+                        setCustomFrom('');
+                        setCustomTo('');
+                      }
+                    }}
+                  >
+                    <option value="today">Today</option>
+                    <option value="week">This week</option>
+                    <option value="month">This month</option>
+                    <option value="year">This year</option>
+                    <option value="custom">Custom date…</option>
                   </select>
+                  {reportPeriod === 'custom' && (
+                    <select value={reportDays} onChange={(e) => setReportDays(Number(e.target.value))}>
+                      <option value={7}>Last 7 days</option>
+                      <option value={14}>Last 14 days</option>
+                      <option value={30}>Last 30 days</option>
+                      <option value={90}>Last 90 days</option>
+                    </select>
+                  )}
+                  {(reportPeriod === 'custom' || !reportPeriod) && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, width: '100%', alignItems: 'center' }}>
+                      <label style={{ fontSize: 12, color: 'var(--gray-500)' }}>Year</label>
+                      <input type="number" min={2020} max={2100} value={customYear} onChange={(e) => setCustomYear(e.target.value)} style={{ width: 90, padding: '6px 8px', fontSize: 13 }} />
+                      <label style={{ fontSize: 12, color: 'var(--gray-500)' }}>Month</label>
+                      <input type="number" min={1} max={12} value={customMonth} onChange={(e) => setCustomMonth(e.target.value)} style={{ width: 70, padding: '6px 8px', fontSize: 13 }} placeholder="1-12" />
+                      <label style={{ fontSize: 12, color: 'var(--gray-500)' }}>Day</label>
+                      <input type="number" min={1} max={31} value={customDay} onChange={(e) => setCustomDay(e.target.value)} style={{ width: 70, padding: '6px 8px', fontSize: 13 }} placeholder="1-31" />
+                      <span style={{ fontSize: 12, color: 'var(--gray-400)' }}>or range:</span>
+                      <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} style={{ padding: '6px 8px', fontSize: 13 }} />
+                      <span style={{ fontSize: 12 }}>→</span>
+                      <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} style={{ padding: '6px 8px', fontSize: 13 }} />
+                    </div>
+                  )}
                   <select value={reportSegment} onChange={(e) => setReportSegment(e.target.value)}>
                     <option value="all">All jobs</option>
                     <option value="cod">Cash on delivery</option>
@@ -1765,10 +2135,18 @@ const AdminDashboard = () => {
                     <option value="text">Text mode</option>
                     <option value="fleet">Fleet riders</option>
                     <option value="independent">Independent riders</option>
-                    <option value="merchant">Merchant commissions</option>
+                    <option value="merchant">Merchant (all)</option>
+                    <option value="merchant_success">Merchant successful</option>
+                    <option value="merchant_fail">Merchant cancelled</option>
+                    <option value="guest">Guest bookings (all)</option>
+                    <option value="guest_success">Guest successful</option>
+                    <option value="guest_fail">Guest cancelled</option>
                     <option value="vat">VAT only</option>
                   </select>
-                  <button className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: 13 }} onClick={() => loadReport()}>Refresh</button>
+                  <button className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: 13 }} onClick={() => loadReport(reportDays, reportSegment, reportPeriod)}>Refresh</button>
+                  {user?.role === 'admin' && (
+                    <button type="button" className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: 13 }} disabled={exportBusy} onClick={exportPdf}>Export PDF</button>
+                  )}
                 </div>
                 {!report ? <p>Loading report...</p> : (
                   <>
@@ -1779,6 +2157,12 @@ const AdminDashboard = () => {
                       <div className="card" style={{ textAlign: 'center', padding: 14 }}><div style={{ fontSize: 22, fontWeight: 800 }}>{report.users?.newCustomers}</div><div style={{ fontSize: 12, color: 'var(--gray-500)' }}>New customers</div></div>
                       <div className="card" style={{ textAlign: 'center', padding: 14 }}><div style={{ fontSize: 22, fontWeight: 800 }}>{report.users?.newRiders}</div><div style={{ fontSize: 12, color: 'var(--gray-500)' }}>New riders</div></div>
                       <div className="card" style={{ textAlign: 'center', padding: 14 }}><div style={{ fontSize: 18, fontWeight: 800, color: 'var(--danger)' }}>₦{(report.finance?.commissionOwed || 0).toLocaleString()}</div><div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Still owed</div></div>
+                      <div className="card" style={{ textAlign: 'center', padding: 14 }}><div style={{ fontSize: 22, fontWeight: 800 }}>{report.jobs?.merchantJobsTotal || 0}</div><div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Merchant jobs</div></div>
+                      <div className="card" style={{ textAlign: 'center', padding: 14 }}><div style={{ fontSize: 22, fontWeight: 800, color: '#166534' }}>{report.jobs?.merchantJobsSuccess || 0}</div><div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Merchant successful</div></div>
+                      <div className="card" style={{ textAlign: 'center', padding: 14 }}><div style={{ fontSize: 22, fontWeight: 800, color: '#991b1b' }}>{report.jobs?.merchantJobsFail || 0}</div><div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Merchant cancelled</div></div>
+                      <div className="card" style={{ textAlign: 'center', padding: 14 }}><div style={{ fontSize: 22, fontWeight: 800 }}>{report.jobs?.guestJobsTotal || 0}</div><div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Guest jobs</div></div>
+                      <div className="card" style={{ textAlign: 'center', padding: 14 }}><div style={{ fontSize: 22, fontWeight: 800, color: '#166534' }}>{report.jobs?.guestJobsSuccess || 0}</div><div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Guest successful</div></div>
+                      <div className="card" style={{ textAlign: 'center', padding: 14 }}><div style={{ fontSize: 22, fontWeight: 800, color: '#991b1b' }}>{report.jobs?.guestJobsFail || 0}</div><div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Guest cancelled</div></div>
                     </div>
                     {report.compare && (
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 16 }}>
