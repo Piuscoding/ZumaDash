@@ -16,7 +16,7 @@ export function BarChart({ title, data, valueKey = 'value', labelKey = 'label', 
   }
 
   return (
-    <div className="card" style={{ padding: 14 }}>
+    <div className="card" style={{ padding: 14, width: '100%', maxWidth: '100%', overflow: 'hidden' }}>
       <h4 style={{ fontSize: 14, marginBottom: 12 }}>{title}</h4>
       <div
         style={{
@@ -26,6 +26,11 @@ export function BarChart({ title, data, valueKey = 'value', labelKey = 'label', 
           height,
           borderBottom: '1px solid var(--gray-200)',
           paddingBottom: 4,
+          width: '100%',
+          maxWidth: '100%',
+          overflowX: 'auto',
+          overflowY: 'hidden',
+          WebkitOverflowScrolling: 'touch',
         }}
       >
         {data.map((d, i) => {
@@ -36,8 +41,9 @@ export function BarChart({ title, data, valueKey = 'value', labelKey = 'label', 
               key={i}
               title={`${d[labelKey]}: ${v.toLocaleString()}`}
               style={{
-                flex: 1,
-                minWidth: 0,
+                flex: '1 0 auto',
+                minWidth: 18,
+                maxWidth: 36,
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',

@@ -101,6 +101,7 @@ const AdminDashboard = () => {
         compare: financeRes.data.compare || null,
         withdrawHistory: financeRes.data.withdrawHistory || [],
         period: financeRes.data.period || null,
+        vatRows: financeRes.data.vatRows || [],
         periodDays: financeRes.data.periodDays,
       });
       setTemplates(tplRes.data.templates || []);
@@ -215,6 +216,7 @@ const AdminDashboard = () => {
         compare: res.data.compare || null,
         withdrawHistory: res.data.withdrawHistory || [],
         period: res.data.period || null,
+        vatRows: res.data.vatRows || [],
         periodDays: res.data.periodDays || days,
       });
     } catch (err) {
@@ -1427,26 +1429,100 @@ const AdminDashboard = () => {
                   </div>
                 )}
 
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 16 }}>
+                  <div className="card" style={{ textAlign: 'center', padding: 12 }}>
+                    <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Merchant commissions ({finance.periodDays || financeDays}d)</div>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: '#7c3aed' }}>
+                      ₦{(finance.period?.merchantCommission || 0).toLocaleString()}
+                    </div>
+                    {finance.compare?.merchantCommission && (
+                      <ChangeBadge pct={finance.compare.merchantCommission.changePct} />
+                    )}
+                  </div>
+                  <div className="card" style={{ textAlign: 'center', padding: 12 }}>
+                    <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>VAT collected ({finance.periodDays || financeDays}d)</div>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: '#0369a1' }}>
+                      ₦{(finance.period?.vat || 0).toLocaleString()}
+                    </div>
+                    {finance.compare?.vat && <ChangeBadge pct={finance.compare.vat.changePct} />}
+                  </div>
+                </div>
+
                 {finance.series?.length > 0 && (
-                  <div style={{ display: 'grid', gap: 12, marginBottom: 16 }}>
-                    <BarChart
-                      title={`Revenue per day (${finance.periodDays || financeDays}d)`}
-                      data={finance.series.map((s) => ({ label: s.date.slice(5), value: s.revenue }))}
-                      color="#2563eb"
-                      height={130}
-                    />
-                    <BarChart
-                      title="Commission per day"
-                      data={finance.series.map((s) => ({ label: s.date.slice(5), value: s.commission }))}
-                      color="#0d6b3a"
-                      height={130}
-                    />
-                    <BarChart
-                      title="Withdrawals paid per day (₦)"
-                      data={finance.series.map((s) => ({ label: s.date.slice(5), value: s.withdrawAmount }))}
-                      color="#b45309"
-                      height={130}
-                    />
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 16, width: '100%' }}>
+                    <div style={{ width: '100%', maxWidth: '100%' }}>
+                      <BarChart
+                        title={`Revenue per day (${finance.periodDays || financeDays}d)`}
+                        data={finance.series.map((s) => ({ label: s.date.slice(5), value: s.revenue }))}
+                        color="#2563eb"
+                        height={140}
+                      />
+                    </div>
+                    <div style={{ width: '100%', maxWidth: '100%' }}>
+                      <BarChart
+                        title="Rider commission per day"
+                        data={finance.series.map((s) => ({ label: s.date.slice(5), value: s.commission }))}
+                        color="#0d6b3a"
+                        height={140}
+                      />
+                    </div>
+                    <div style={{ width: '100%', maxWidth: '100%' }}>
+                      <BarChart
+                        title="Merchant commission per day"
+                        data={finance.series.map((s) => ({
+                          label: s.date.slice(5),
+                          value: s.merchantCommission || 0,
+                        }))}
+                        color="#7c3aed"
+                        height={140}
+                      />
+                    </div>
+                    <div style={{ width: '100%', maxWidth: '100%' }}>
+                      <BarChart
+                        title="VAT collected per day"
+                        data={finance.series.map((s) => ({ label: s.date.slice(5), value: s.vat || 0 }))}
+                        color="#0369a1"
+                        height={140}
+                      />
+                    </div>
+                    <div style={{ width: '100%', maxWidth: '100%' }}>
+                      <BarChart
+                        title="Withdrawals paid per day (₦)"
+                        data={finance.series.map((s) => ({ label: s.date.slice(5), value: s.withdrawAmount }))}
+                        color="#b45309"
+                        height={140}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {(finance.vatRows || []).length > 0 && (
+                  <div className="card" style={{ padding: 12, marginBottom: 16, overflowX: 'auto' }}>
+                    <h3 style={{ fontSize: 15, marginBottom: 10 }}>VAT collections (period)</h3>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 480 }}>
+                      <thead>
+                        <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--gray-200)' }}>
+                          <th style={{ padding: '8px 6px' }}>Booking ID</th>
+                          <th style={{ padding: '8px 6px' }}>Role</th>
+                          <th style={{ padding: '8px 6px' }}>Name</th>
+                          <th style={{ padding: '8px 6px' }}>VAT</th>
+                          <th style={{ padding: '8px 6px' }}>Date</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {finance.vatRows.map((row) => (
+                          <tr key={row.jobMongoId || row.jobId} style={{ borderBottom: '1px solid var(--gray-100)' }}>
+                            <td style={{ padding: '8px 6px', fontWeight: 600 }}>{row.jobId}</td>
+                            <td style={{ padding: '8px 6px', textTransform: 'capitalize' }}>{row.userRole}</td>
+                            <td style={{ padding: '8px 6px' }}>{row.userName}</td>
+                            <td style={{ padding: '8px 6px' }}>₦{(row.vatAmount || 0).toLocaleString()}</td>
+                            <td style={{ padding: '8px 6px', whiteSpace: 'nowrap' }}>
+                              {row.collectedAt ? new Date(row.collectedAt).toLocaleString() : '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 )}
 
@@ -1608,6 +1684,8 @@ const AdminDashboard = () => {
                     <option value="text">Text mode</option>
                     <option value="fleet">Fleet riders</option>
                     <option value="independent">Independent riders</option>
+                    <option value="merchant">Merchant commissions</option>
+                    <option value="vat">VAT only</option>
                   </select>
                   <button className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: 13 }} onClick={() => loadReport()}>Refresh</button>
                 </div>
@@ -1648,7 +1726,7 @@ const AdminDashboard = () => {
                     )}
 
                     {report.series?.length > 0 && (
-                      <div style={{ marginBottom: 16 }}>
+                      <div style={{ marginBottom: 16, width: '100%' }}>
                         <BarChart
                           title={`Jobs per day (${report.periodDays}d · ${report.segment || 'all'})`}
                           data={report.series.map((s) => ({
@@ -1671,6 +1749,77 @@ const AdminDashboard = () => {
                           color="#2563eb"
                           height={140}
                         />
+                      </div>
+                    )}
+                    {report.series?.length > 0 && (
+                      <div style={{ marginBottom: 16, width: '100%' }}>
+                        <BarChart
+                          title="Rider commission per day (₦)"
+                          data={report.series.map((s) => ({
+                            label: s.date.slice(5),
+                            value: s.commission || 0,
+                          }))}
+                          color="#0d6b3a"
+                          height={140}
+                        />
+                      </div>
+                    )}
+                    {report.series?.length > 0 && (
+                      <div style={{ marginBottom: 16, width: '100%' }}>
+                        <BarChart
+                          title="Merchant commission per day (₦)"
+                          data={report.series.map((s) => ({
+                            label: s.date.slice(5),
+                            value: s.merchantCommission || 0,
+                          }))}
+                          color="#7c3aed"
+                          height={140}
+                        />
+                      </div>
+                    )}
+                    {report.series?.length > 0 && (
+                      <div style={{ marginBottom: 16, width: '100%' }}>
+                        <BarChart
+                          title="VAT collected per day (₦)"
+                          data={report.series.map((s) => ({
+                            label: s.date.slice(5),
+                            value: s.vat || 0,
+                          }))}
+                          color="#0369a1"
+                          height={140}
+                        />
+                      </div>
+                    )}
+
+                    {(report.vatRows || []).length > 0 && (
+                      <div className="card" style={{ padding: 12, marginBottom: 16, overflowX: 'auto' }}>
+                        <h3 style={{ fontSize: 15, marginBottom: 10 }}>
+                          VAT collections{report.segment === 'vat' ? ' (filtered)' : ''}
+                        </h3>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 480 }}>
+                          <thead>
+                            <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--gray-200)' }}>
+                              <th style={{ padding: '8px 6px' }}>Booking ID</th>
+                              <th style={{ padding: '8px 6px' }}>Role</th>
+                              <th style={{ padding: '8px 6px' }}>Name</th>
+                              <th style={{ padding: '8px 6px' }}>VAT</th>
+                              <th style={{ padding: '8px 6px' }}>Date</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {report.vatRows.map((row) => (
+                              <tr key={row.jobMongoId || row.jobId} style={{ borderBottom: '1px solid var(--gray-100)' }}>
+                                <td style={{ padding: '8px 6px', fontWeight: 600 }}>{row.jobId}</td>
+                                <td style={{ padding: '8px 6px', textTransform: 'capitalize' }}>{row.userRole}</td>
+                                <td style={{ padding: '8px 6px' }}>{row.userName}</td>
+                                <td style={{ padding: '8px 6px' }}>₦{(row.vatAmount || 0).toLocaleString()}</td>
+                                <td style={{ padding: '8px 6px', whiteSpace: 'nowrap' }}>
+                                  {row.collectedAt ? new Date(row.collectedAt).toLocaleString() : '—'}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
                     )}
 
