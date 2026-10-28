@@ -266,6 +266,7 @@ const Landing = () => {
               ) : (
                 <>
                   <Link to="/login">Login</Link>
+                  <Link to="/forgot-password" style={{ marginLeft: 12, fontSize: 13, opacity: 0.9 }}>Forgot password?</Link>
                   <Link to="/register">Sign up</Link>
                 </>
               )}

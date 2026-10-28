@@ -22,6 +22,8 @@ import { useAuth } from './context/AuthContext';
 import Landing from './pages/Landing';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 import VerifyWhatsApp from './pages/VerifyWhatsApp';
 import AdminCreateCustomer from './pages/admin/AdminCreateCustomer';
 import AdminBookDelivery from './pages/admin/AdminBookDelivery';
@@ -97,6 +99,8 @@ function App() {
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/verify-whatsapp" element={<VerifyWhatsApp />} />
         <Route path="/device-otp" element={<DeviceOtp />} />
         <Route path="/become-a-rider" element={<RiderApply />} />

@@ -174,7 +174,12 @@ const Login = () => {
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="you@example.com" />
           </div>
           <div className="form-group">
-            <label>Password</label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <label style={{ margin: 0 }}>Password</label>
+              <Link to="/forgot-password" style={{ fontSize: 13, color: 'var(--primary)', fontWeight: 600 }}>
+                Forgot password?
+              </Link>
+            </div>
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required placeholder="••••••••" />
           </div>
           <button type="submit" className="btn btn-primary btn-block" disabled={loading}>
