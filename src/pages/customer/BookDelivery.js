@@ -14,7 +14,22 @@ import { uploadImage, uploadFile, fileToDataUrl, ensureCloudinaryUrl } from '../
 
 const CORRIDOR_HINT = 'Must include one of: Dutse, Kubwa, Bwari, Ushafa';
 
+function computeMultiStopDisplayPrice(base, extraStops, fees) {
+  const stopsLike = [{ type: 'pickup' }, { type: 'dropoff' }, ...(extraStops || [])];
+  const pickups = stopsLike.filter((s) => s.type === 'pickup').length;
+  const dropoffs = stopsLike.filter((s) => s.type === 'dropoff').length;
+  const extraPickups = Math.max(0, pickups - 1);
+  const extraDropoffs = Math.max(0, dropoffs - 1);
+  const feeP = extraPickups * (Number(fees.perAdditionalPickupFee) || 400);
+  const feeD = extraDropoffs * (Number(fees.perAdditionalDropoffFee) || 300);
+  let total = Math.round(Number(base) || 0) + feeP + feeD;
+  const floor = Number(fees.textModeFloor) || 1500;
+  if (total < floor) total = floor;
+  return { total, feeP, feeD, extraPickups, extraDropoffs };
+}
+
 function hasCorridor(text) {
+
   const t = String(text || '').toLowerCase();
   return ['dutse', 'kubwa', 'bwari', 'ushafa'].some((c) => t.includes(c));
 }
@@ -51,6 +66,21 @@ const BookDelivery = ({ adminMode = false } = {}) => {
   const bookingUser = adminMode ? selectedCustomer : user;
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
+  const [extraStops, setExtraStops] = useState([]); // { type, description, coordinates?, zone? }
+  const [stopError, setStopError] = useState('');
+  const [groupingFees, setGroupingFees] = useState({
+    perAdditionalPickupFee: 400,
+    perAdditionalDropoffFee: 300,
+    maxStopsPerPrivateTrip: 5,
+    textModeFloor: 1500,
+    saveMoneyMode: 'user_choice',
+    maxWaitMinutesCustomerCanChoose: 30,
+    automaticPoolWindowMinutes: 12,
+    saveMoneyDiscountPercent: 45,
+  });
+  const [saveMoney, setSaveMoney] = useState(false);
+  const [saveMoneyWaitMinutes, setSaveMoneyWaitMinutes] = useState(15);
+
   const [loading, setLoading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState(null);
@@ -98,6 +128,20 @@ const BookDelivery = ({ adminMode = false } = {}) => {
     api.get('/api/settings')
       .then((res) => {
         const bd = res.data.settings?.bankDetails;
+        const g = res.data.settings?.grouping;
+        if (g) {
+          setGroupingFees({
+            perAdditionalPickupFee: Number(g.perAdditionalPickupFee) || 400,
+            perAdditionalDropoffFee: Number(g.perAdditionalDropoffFee) || 300,
+            maxStopsPerPrivateTrip: Number(g.maxStopsPerPrivateTrip) || 5,
+            textModeFloor: Number(g.textModeFloor) || 1500,
+            saveMoneyMode: g.saveMoneyMode || 'user_choice',
+            maxWaitMinutesCustomerCanChoose: Number(g.maxWaitMinutesCustomerCanChoose) || 30,
+            automaticPoolWindowMinutes: Number(g.automaticPoolWindowMinutes) || 12,
+            saveMoneyDiscountPercent: Number(g.saveMoneyDiscountPercent) || 45,
+          });
+        }
+
         if (bd) {
           setBankDetails({
             accountName: bd.accountName || '',
@@ -328,6 +372,29 @@ const BookDelivery = ({ adminMode = false } = {}) => {
         ? 'bank_transfer'
         : form.paymentMethod,
     suggestedPrice: Number(form.suggestedPrice),
+        isMultiStop: extraStops.length > 0,
+        saveMoney:
+          extraStops.length === 0 &&
+          groupingFees.saveMoneyMode === 'user_choice' &&
+          saveMoney,
+        saveMoneyWaitMinutes:
+          extraStops.length === 0 &&
+          groupingFees.saveMoneyMode === 'user_choice' &&
+          saveMoney
+            ? Number(saveMoneyWaitMinutes) || 15
+            : undefined,
+        extraStops: extraStops.map((s) => ({
+          type: s.type,
+          description: s.description,
+          coordinates: s.coordinates || undefined,
+          zone: s.zone || undefined,
+          contactName: s.contactName || form.contactName || '',
+          contactPhone: s.contactPhone || form.contactPhone || '',
+          photos: s.photos || [],
+          voiceNote: s.voiceNote || '',
+          isMapMode: !!s.isMapMode,
+        })),
+
     locationMode: bookingMode === 'map' && mapQuote?.locationMode === 'map' ? 'map' : 'text',
     mapDistanceKm:
       bookingMode === 'map' && mapQuote?.locationMode === 'map' ? mapQuote.mapDistanceKm : undefined,
@@ -913,6 +980,95 @@ const BookDelivery = ({ adminMode = false } = {}) => {
                 )}
               </div>
 
+
+              {/* Step 2 – private multi-stop (same customer only; never Save Money) */}
+              <div className="card" style={{ padding: 14, marginBottom: 16, border: '1px solid var(--gray-200)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <strong style={{ fontSize: 14 }}>Extra stops (optional)</strong>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ fontSize: 12, padding: '6px 10px' }}
+                    disabled={2 + extraStops.length >= (groupingFees.maxStopsPerPrivateTrip || 5)}
+                    onClick={() => {
+                      const max = groupingFees.maxStopsPerPrivateTrip || 5;
+                      if (2 + extraStops.length >= max) {
+                        setStopError(`Maximum ${max} stops (including pickup and drop-off)`);
+                        return;
+                      }
+                      setStopError('');
+                      setExtraStops((s) => [...s, { type: 'dropoff', description: '' }]);
+                    }}
+                  >
+                    + Add more stops
+                  </button>
+                </div>
+                <p style={{ fontSize: 12, color: 'var(--gray-500)', margin: '8px 0 0' }}>
+                  Up to {(groupingFees.maxStopsPerPrivateTrip || 5)} stops total. All pickups must be in the same corridor. Private multi-stop is never shared with other customers.
+                </p>
+                {stopError ? (
+                  <div style={{ marginTop: 8, color: '#991b1b', fontSize: 13 }}>{stopError}</div>
+                ) : null}
+                {extraStops.map((stop, idx) => (
+                  <div key={idx} style={{ marginTop: 12, padding: 12, background: 'var(--gray-50)', borderRadius: 8 }}>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+                      <select
+                        value={stop.type}
+                        onChange={(e) => {
+                          const type = e.target.value === 'pickup' ? 'pickup' : 'dropoff';
+                          setExtraStops((list) => {
+                            const next = [...list];
+                            next[idx] = { ...next[idx], type };
+                            return next;
+                          });
+                          setStopError('');
+                        }}
+                        style={{ padding: '6px 8px', fontSize: 13 }}
+                      >
+                        <option value="pickup">Pickup</option>
+                        <option value="dropoff">Drop-off</option>
+                      </select>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        style={{ fontSize: 12, padding: '4px 8px', marginLeft: 'auto' }}
+                        onClick={() => setExtraStops((list) => list.filter((_, i) => i !== idx))}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    <textarea
+                      rows={2}
+                      value={stop.description}
+                      placeholder="Address / landmarks (must include Dutse, Kubwa, Bwari or Ushafa)"
+                      onChange={(e) => {
+                        const description = e.target.value;
+                        setExtraStops((list) => {
+                          const next = [...list];
+                          next[idx] = { ...next[idx], description };
+                          return next;
+                        });
+                      }}
+                      style={{ width: '100%', fontSize: 14 }}
+                    />
+                  </div>
+                ))}
+                {extraStops.length > 0 && (
+                  <div style={{ marginTop: 12, fontSize: 13, padding: 10, background: '#f0fdf4', borderRadius: 8 }}>
+                    {(() => {
+                      const m = computeMultiStopDisplayPrice(form.suggestedPrice, extraStops, groupingFees);
+                      return (
+                        <>
+                          <div>Extra pickups × ₦{groupingFees.perAdditionalPickupFee}: <strong>₦{m.feeP.toLocaleString()}</strong></div>
+                          <div>Extra drop-offs × ₦{groupingFees.perAdditionalDropoffFee}: <strong>₦{m.feeD.toLocaleString()}</strong></div>
+                          <div style={{ marginTop: 4 }}>Estimated multi-stop total: <strong>₦{m.total.toLocaleString()}</strong></div>
+                        </>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
+
 <PhotoRow field="pickupPhotos" label="Pickup photos (optional)" />
               <PhotoRow field="dropoffPhotos" label="Drop-off photos (optional)" />
               <button
@@ -926,7 +1082,40 @@ const BookDelivery = ({ adminMode = false } = {}) => {
                     setError('Invalid drop-off address — must include Dutse, Kubwa, Bwari or Ushafa');
                     return;
                   }
+                  const max = groupingFees.maxStopsPerPrivateTrip || 5;
+                  if (2 + extraStops.length > max) {
+                    setError(`Maximum ${max} stops allowed`);
+                    return;
+                  }
+                  for (let i = 0; i < extraStops.length; i++) {
+                    const s = extraStops[i];
+                    if (!String(s.description || '').trim()) {
+                      setError(`Extra stop ${i + 1} needs an address`);
+                      return;
+                    }
+                    if (!hasCorridor(s.description)) {
+                      setError(`Extra stop ${i + 1} must include Dutse, Kubwa, Bwari or Ushafa`);
+                      return;
+                    }
+                  }
+                  const pickups = ['pickup', ...extraStops.filter((s) => s.type === 'pickup').map(() => 'x')];
+                  const corridors = [form.pickupDescription, ...extraStops.filter((s) => s.type === 'pickup').map((s) => s.description)]
+                    .map((d) => {
+                      const x = String(d || '').toLowerCase();
+                      return ['dutse', 'kubwa', 'bwari', 'ushafa'].find((c) => x.includes(c));
+                    })
+                    .filter(Boolean);
+                  if (new Set(corridors).size > 1) {
+                    setError('All pickup stops must be in the same corridor');
+                    return;
+                  }
+                  // Apply multi-stop fee into suggested price display for next steps
+                  if (extraStops.length > 0) {
+                    const m = computeMultiStopDisplayPrice(form.suggestedPrice, extraStops, groupingFees);
+                    setForm((f) => ({ ...f, suggestedPrice: m.total }));
+                  }
                   setError('');
+                  setStopError('');
                   setStep(2);
                 }}
                 disabled={
@@ -945,6 +1134,43 @@ const BookDelivery = ({ adminMode = false } = {}) => {
           {step === 2 && (
             <>
               
+              {groupingFees.saveMoneyMode === 'user_choice' && extraStops.length === 0 && (
+                <div className="card" style={{ padding: 14, marginBottom: 16, border: '1px dashed var(--primary)' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={saveMoney}
+                      onChange={(e) => setSaveMoney(e.target.checked)}
+                    />
+                    <span style={{ fontWeight: 700 }}>Save Money</span>
+                  </label>
+                  <p style={{ fontSize: 13, color: 'var(--gray-600)', margin: '8px 0 0' }}>
+                    Wait a few minutes for a neighbour on a similar route. You pay the normal price now; if a match is found you get non-withdrawable credit for the discount.
+                  </p>
+                  {saveMoney && (
+                    <div className="form-group" style={{ marginTop: 12, marginBottom: 0 }}>
+                      <label>How long can we look? (minutes)</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={groupingFees.maxWaitMinutesCustomerCanChoose || 30}
+                        value={saveMoneyWaitMinutes}
+                        onChange={(e) => {
+                          let v = Number(e.target.value) || 1;
+                          const max = groupingFees.maxWaitMinutesCustomerCanChoose || 30;
+                          if (v > max) v = max;
+                          if (v < 1) v = 1;
+                          setSaveMoneyWaitMinutes(v);
+                        }}
+                      />
+                      <small style={{ color: 'var(--gray-500)', fontSize: 12 }}>
+                        Max {groupingFees.maxWaitMinutesCustomerCanChoose || 30} minutes
+                      </small>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="form-group">
                 <label>{t ? t('book.voiceNote') : 'Voice note (optional)'}</label>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 8 }}>

@@ -30,6 +30,7 @@ const TrackDelivery = () => {
   };
   const { id } = useParams();
   const navigate = useNavigate();
+  const [saveMoneyMode, setSaveMoneyMode] = useState('user_choice');
   const { user } = useAuth();
   const [job, setJob] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -74,6 +75,15 @@ const TrackDelivery = () => {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await api.get('/api/settings');
+        setSaveMoneyMode(res.data.settings?.grouping?.saveMoneyMode || 'user_choice');
+      } catch (_) {}
+    })();
+  }, []);
 
   useEffect(() => {
     fetchJob();
@@ -890,7 +900,22 @@ const TrackDelivery = () => {
               )}
             </div>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              {job.status === 'accepted' && (
+              {job.poolStatus === 'waiting' && (
+        <div className="card" style={{ padding: 16, marginBottom: 12, background: '#f0fdf4', border: '1px solid #86efac' }}>
+          {saveMoneyMode === 'user_choice' ? (
+            <>
+              <strong>Looking for neighbours on the same route…</strong>
+              {job.poolExpiresAt ? <PoolCountdown expiresAt={job.poolExpiresAt} /> : null}
+              <p style={{ fontSize: 13, color: 'var(--gray-600)', margin: '8px 0 0' }}>
+                You paid the normal price. If a shared route is found, credit may be applied.
+              </p>
+            </>
+          ) : (
+            <strong>Waiting for rider…</strong>
+          )}
+        </div>
+      )}
+      {job.status === 'accepted' && (
                 <button className="btn btn-primary" onClick={() => updateStatus('live')} disabled={actionLoading}>
                   {actionLoading ? '…' : 'Start (LIVE)'}
                 </button>
@@ -979,5 +1004,28 @@ const TrackDelivery = () => {
     </div>
   );
 };
+
+
+function PoolCountdown({ expiresAt }) {
+  const [left, setLeft] = useState(() => {
+    const ms = new Date(expiresAt).getTime() - Date.now();
+    return ms > 0 ? ms : 0;
+  });
+  useEffect(() => {
+    const t = setInterval(() => {
+      const ms = new Date(expiresAt).getTime() - Date.now();
+      setLeft(ms > 0 ? ms : 0);
+    }, 1000);
+    return () => clearInterval(t);
+  }, [expiresAt]);
+  const totalSec = Math.floor(left / 1000);
+  const mm = String(Math.floor(totalSec / 60)).padStart(2, '0');
+  const ss = String(totalSec % 60).padStart(2, '0');
+  return (
+    <p style={{ fontSize: 22, fontWeight: 800, margin: '10px 0 0', letterSpacing: 2 }}>
+      Time left {mm}:{ss}
+    </p>
+  );
+}
 
 export default TrackDelivery;

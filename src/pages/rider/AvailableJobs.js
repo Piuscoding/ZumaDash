@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import RiderNavbar from '../../components/RiderNavbar';
 import api from '../../services/api';
 import { ensureLocationForMap } from '../../utils/geo';
@@ -22,7 +23,10 @@ const jobMatchesRoute = (job, fromC, toC) => {
 };
 
 const AvailableJobs = () => {
+  const navigate = useNavigate();
   const [jobs, setJobs] = useState([]);
+  const [trips, setTrips] = useState([]);
+  const [tripBusy, setTripBusy] = useState('');
   const [loading, setLoading] = useState(true);
   const [offerAmount, setOfferAmount] = useState({});
   const [offerNote, setOfferNote] = useState({});
@@ -50,8 +54,42 @@ const AvailableJobs = () => {
     }
   };
 
+  const fetchTrips = async () => {
+    try {
+      const res = await api.get('/api/trips/available');
+      setTrips(Array.isArray(res.data.trips) ? res.data.trips : []);
+    } catch (_) {
+      setTrips([]);
+    }
+  };
+
+  const acceptTrip = async (tripId) => {
+    setTripBusy(tripId);
+    setMessage('');
+    try {
+      const res = await api.post(`/api/trips/${tripId}/accept`);
+      const jobsArr = res.data.trip?.jobs || [];
+      const first = jobsArr[0];
+      const id = first && (first._id || first);
+      await fetchTrips();
+      await fetchJobs();
+      if (id) navigate(`/track/${id}`);
+      else setMessage(res.data.message || 'Grouped trip accepted');
+    } catch (e) {
+      setMessage(e.response?.data?.message || 'Could not accept trip');
+    } finally {
+      setTripBusy('');
+    }
+  };
+
   useEffect(() => {
     fetchJobs();
+    fetchTrips();
+    const t = setInterval(() => {
+      fetchJobs();
+      fetchTrips();
+    }, 30000);
+    return () => clearInterval(t);
   }, []);
 
   const displayedJobs = useMemo(() => {
@@ -364,6 +402,44 @@ const AvailableJobs = () => {
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            
+        {trips.length > 0 && (
+          <div style={{ marginBottom: 20 }}>
+            <h2 style={{ fontSize: 16, marginBottom: 10 }}>Grouped trip offers</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {trips.map((tr) => (
+                <div key={tr._id} className="card" style={{ border: '2px solid var(--primary)' }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+                    <span className="badge badge-info">Grouped trip – {tr.stopCount} stops</span>
+                    <span className="badge">{tr.tripId}</span>
+                  </div>
+                  <p style={{ fontSize: 14, marginBottom: 6 }}>
+                    <strong>Your earnings:</strong> ₦{Number(tr.riderEarning || 0).toLocaleString()}
+                    {tr.cashToCollect > 0 ? (
+                      <> · <strong>Cash to collect:</strong> ₦{Number(tr.cashToCollect).toLocaleString()}</>
+                    ) : null}
+                  </p>
+                  <ol style={{ margin: '0 0 12px 18px', padding: 0, fontSize: 13 }}>
+                    {(tr.stops || []).map((s, i) => (
+                      <li key={i} style={{ marginBottom: 4 }}>
+                        <span style={{ textTransform: 'capitalize' }}>{s.type}</span>: {s.description}
+                      </li>
+                    ))}
+                  </ol>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={tripBusy === tr._id}
+                    onClick={() => acceptTrip(tr._id)}
+                  >
+                    {tripBusy === tr._id ? 'Accepting…' : 'Accept grouped trip'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
             {displayedJobs.map((job) => (
               <div key={job._id} className="card">
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
@@ -373,6 +449,11 @@ const AvailableJobs = () => {
                     </span>
                   )}
                   <span className="badge badge-warning">{job.packageSize || 'Package'}</span>
+                  {job.isMultiStop ? (
+                    <span className="badge badge-info">
+                      Multi-stop ({job.stopCount || (job.stops || []).length || 0} stops)
+                    </span>
+                  ) : null}
                   <button
                     type="button"
                     className="btn btn-secondary"
@@ -397,6 +478,21 @@ const AvailableJobs = () => {
                   Suggested: ₦{(job.suggestedPrice || 0).toLocaleString()}
                 </p>
                 {(job.bookingVoiceNote || job.bookingVideo || (job.pickup?.photos || []).length > 0) && (
+                  {job.isMultiStop && Array.isArray(job.stops) && job.stops.length > 0 && (
+                    <div style={{ fontSize: 12, marginBottom: 8, padding: 8, background: 'var(--gray-50)', borderRadius: 8 }}>
+                      <strong>Stops (optimised order)</strong>
+                      <ol style={{ margin: '6px 0 0 18px', padding: 0 }}>
+                        {(job.stops || [])
+                          .slice()
+                          .sort((a, b) => (a.sequence || 0) - (b.sequence || 0))
+                          .map((s, i) => (
+                            <li key={i} style={{ marginBottom: 4 }}>
+                              <span style={{ textTransform: 'capitalize' }}>{s.type}</span>: {s.description}
+                            </li>
+                          ))}
+                      </ol>
+                    </div>
+                  )}
                   <p style={{ fontSize: 12, color: 'var(--gray-500)', marginBottom: 8 }}>
                     Has media
                     {job.bookingVoiceNote ? ' · voice' : ''}
