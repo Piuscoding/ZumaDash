@@ -38,6 +38,7 @@ const AdminDashboard = () => {
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [mapBookingEnabled, setMapBookingEnabled] = useState(false);
   const [mapStackDefault, setMapStackDefault] = useState('tomtom_osrm_hybrid');
+  const [withdrawalFrequency, setWithdrawalFrequency] = useState('anytime');
   const [merchantSelfDeliveryCommissionPercent, setMerchantSelfDeliveryCommissionPercent] = useState(7.5);
   const [etaCalibration, setEtaCalibration] = useState(1.75);
   const [mapPricing, setMapPricing] = useState({ baseFare: 500, ratePerKm: 200, includedKm: 2, minimumFare: 800 });
@@ -176,6 +177,7 @@ const AdminDashboard = () => {
         if (s.logoUrl || s.platformLogo) setLogoUrl(s.logoUrl || s.platformLogo || '');
         if (s.priceBands) setPriceBands(JSON.parse(JSON.stringify(s.priceBands)));
         setMapBookingEnabled(!!s.mapBookingEnabled);
+        setWithdrawalFrequency(['daily','weekly','anytime'].includes(s.withdrawalFrequency) ? s.withdrawalFrequency : 'anytime');
         setMapStackDefault(['tomtom_full','tomtom_osrm_hybrid','osrm_osm','osm_tomtom_routing'].includes(s.mapStackDefault) ? s.mapStackDefault : 'tomtom_osrm_hybrid');
         setMerchantSelfDeliveryCommissionPercent(
           s.merchantOwnGoodsCommissionPercent ?? s.merchantSelfDeliveryCommissionPercent ?? 7.5
@@ -750,6 +752,7 @@ const AdminDashboard = () => {
         maxLoginAttempts,
         lockoutMinutes,
         fraudAutoFreezeScore,
+        withdrawalFrequency,
       });
       setMessage('Settings saved');
       await refreshBranding();
@@ -2460,9 +2463,19 @@ const AdminDashboard = () => {
                   <div className="form-group">
                     <label>Auto-freeze fraud score threshold</label>
                     <input type="number" min={5} max={200} value={fraudAutoFreezeScore} onChange={(e) => setFraudAutoFreezeScore(Number(e.target.value))} />
-                    <small style={{ fontSize: 12, color: 'var(--gray-500)' }}>
-                      When a user&apos;s fraud score reaches this value, the account is frozen automatically (in-app + email if allowed).
-                    </small>
+                  </div>
+                  <hr style={{ margin: '16px 0', border: 'none', borderTop: '1px solid var(--gray-200)' }} />
+                  <h3 style={{ fontSize: 15, marginBottom: 12 }}>Withdrawals (riders & merchants)</h3>
+                  <div className="form-group">
+                    <label>Withdrawal frequency</label>
+                    <select
+                      value={withdrawalFrequency}
+                      onChange={(e) => setWithdrawalFrequency(e.target.value)}
+                    >
+                      <option value="anytime">Anytime</option>
+                      <option value="daily">Once per day</option>
+                      <option value="weekly">Once per week</option>
+                    </select>
                   </div>
                   <button type="submit" className="btn btn-primary btn-block" disabled={settingsSaving}>{settingsSaving ? 'Saving...' : 'Save settings'}</button>
                 </form>

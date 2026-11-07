@@ -766,12 +766,34 @@ const TrackDelivery = () => {
 
                 <JobMediaGallery job={job} title="All media" />
 
-        {/* NOW-15 customer offers */}
-        {isCustomer && job.status === 'pending_offers' && (
+        {/* Step 9 – Save Money pool waiting (customer only; mode-aware messages) */}
+        {isCustomer && job.poolStatus === 'waiting' && (
+          <div className="card" style={{ padding: 16, marginTop: 12, marginBottom: 12, background: '#f0fdf4', border: '1px solid #86efac' }}>
+            {saveMoneyMode === 'user_choice' ? (
+              <>
+                <strong>Looking for neighbours on the same route…</strong>
+                {job.poolExpiresAt ? <PoolCountdown expiresAt={job.poolExpiresAt} /> : null}
+                <p style={{ fontSize: 13, color: 'var(--gray-600)', margin: '8px 0 0' }}>
+                  You paid the normal price. If a shared route is found, credit may be applied.
+                </p>
+              </>
+            ) : (
+              <>
+                <strong>Waiting for rider…</strong>
+                <p style={{ fontSize: 13, color: 'var(--gray-600)', margin: '8px 0 0' }}>
+                  Your delivery is being assigned. No action needed.
+                </p>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* NOW-15 customer offers – hidden while still in Save Money pool */}
+        {isCustomer && job.status === 'pending_offers' && job.poolStatus !== 'waiting' && (
           <div className="card" style={{ marginTop: 12 }}>
             <h3 style={{ fontSize: 15, marginBottom: 12 }}>Rider offers</h3>
             {(job.offers || []).filter((o) => ['pending', 'countered'].includes(o.status)).length === 0 && (
-              <p style={{ fontSize: 13, color: 'var(--gray-500)' }}>Waiting for rider offers…</p>
+              <p style={{ fontSize: 13, color: 'var(--gray-500)' }}>Waiting for rider…</p>
             )}
             {(job.offers || [])
               .filter((o) => ['pending', 'countered'].includes(o.status))
@@ -900,22 +922,7 @@ const TrackDelivery = () => {
               )}
             </div>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              {job.poolStatus === 'waiting' && (
-        <div className="card" style={{ padding: 16, marginBottom: 12, background: '#f0fdf4', border: '1px solid #86efac' }}>
-          {saveMoneyMode === 'user_choice' ? (
-            <>
-              <strong>Looking for neighbours on the same route…</strong>
-              {job.poolExpiresAt ? <PoolCountdown expiresAt={job.poolExpiresAt} /> : null}
-              <p style={{ fontSize: 13, color: 'var(--gray-600)', margin: '8px 0 0' }}>
-                You paid the normal price. If a shared route is found, credit may be applied.
-              </p>
-            </>
-          ) : (
-            <strong>Waiting for rider…</strong>
-          )}
-        </div>
-      )}
-      {job.status === 'accepted' && (
+              {job.status === 'accepted' && (
                 <button className="btn btn-primary" onClick={() => updateStatus('live')} disabled={actionLoading}>
                   {actionLoading ? '…' : 'Start (LIVE)'}
                 </button>

@@ -22,6 +22,14 @@ const Earnings = () => {
   const [jobsLoading, setJobsLoading] = useState(true);
   const [withdraws, setWithdraws] = useState([]);
   const [withdrawsLoading, setWithdrawsLoading] = useState(true);
+  const [withdrawalFrequency, setWithdrawalFrequency] = useState('anytime');
+
+  useEffect(() => {
+    api.get('/api/settings').then((res) => {
+      const f = res.data.settings?.withdrawalFrequency;
+      if (['daily', 'weekly', 'anytime'].includes(f)) setWithdrawalFrequency(f);
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (user?.riderBank) {
@@ -360,6 +368,9 @@ const Earnings = () => {
         {/* Withdraw + ₦50 fee */}
         <div className="card" style={{ padding: 16, marginBottom: 16 }}>
           <h3 style={{ fontSize: 15, marginBottom: 8 }}>Withdraw</h3>
+          <p style={{ fontSize: 12, color: 'var(--gray-500)', marginBottom: 8 }}>
+            Schedule: {withdrawalFrequency === 'daily' ? 'once per day' : withdrawalFrequency === 'weekly' ? 'once per week' : 'anytime'}
+          </p>
           <p style={{ fontSize: 12, color: 'var(--gray-500)', marginBottom: 10 }}>
             Fee ₦{WITHDRAW_FEE} is added on every withdrawal (any amount including ₦10,000+). You
             need amount + fee available.

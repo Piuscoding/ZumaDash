@@ -477,22 +477,22 @@ const AvailableJobs = () => {
                 <p style={{ fontSize: 16, fontWeight: 700, marginBottom: 12, color: 'var(--primary)' }}>
                   Suggested: ₦{(job.suggestedPrice || 0).toLocaleString()}
                 </p>
+                {job.isMultiStop && Array.isArray(job.stops) && job.stops.length > 0 && (
+                  <div style={{ fontSize: 12, marginBottom: 8, padding: 8, background: 'var(--gray-50)', borderRadius: 8 }}>
+                    <strong>Stops (optimised order)</strong>
+                    <ol style={{ margin: '6px 0 0 18px', padding: 0 }}>
+                      {(job.stops || [])
+                        .slice()
+                        .sort((a, b) => (a.sequence || 0) - (b.sequence || 0))
+                        .map((s, i) => (
+                          <li key={i} style={{ marginBottom: 4 }}>
+                            <span style={{ textTransform: 'capitalize' }}>{s.type}</span>: {s.description}
+                          </li>
+                        ))}
+                    </ol>
+                  </div>
+                )}
                 {(job.bookingVoiceNote || job.bookingVideo || (job.pickup?.photos || []).length > 0) && (
-                  {job.isMultiStop && Array.isArray(job.stops) && job.stops.length > 0 && (
-                    <div style={{ fontSize: 12, marginBottom: 8, padding: 8, background: 'var(--gray-50)', borderRadius: 8 }}>
-                      <strong>Stops (optimised order)</strong>
-                      <ol style={{ margin: '6px 0 0 18px', padding: 0 }}>
-                        {(job.stops || [])
-                          .slice()
-                          .sort((a, b) => (a.sequence || 0) - (b.sequence || 0))
-                          .map((s, i) => (
-                            <li key={i} style={{ marginBottom: 4 }}>
-                              <span style={{ textTransform: 'capitalize' }}>{s.type}</span>: {s.description}
-                            </li>
-                          ))}
-                      </ol>
-                    </div>
-                  )}
                   <p style={{ fontSize: 12, color: 'var(--gray-500)', marginBottom: 8 }}>
                     Has media
                     {job.bookingVoiceNote ? ' · voice' : ''}

@@ -17,6 +17,7 @@ const AdminNavbar = () => {
     { to: '/admin/create-customer', label: t('admin.createCustomer') },
     { to: '/admin/book', label: t('admin.bookForCustomer') },
     { to: '/admin/applications', label: t('admin.applyForUser') },
+    { to: '/admin/grouping', label: 'Grouping & AI' },
     { to: '/support', label: t('nav.support') },
     { to: '/notifications', label: t('nav.notifications') },
     { to: '/profile', label: t('nav.profile') },
@@ -36,6 +37,7 @@ const AdminNavbar = () => {
           <Link to="/admin/create-customer" className="text-white/90 hover:text-white">{t('admin.createCustomer')}</Link>
           <Link to="/admin/book" className="text-white/90 hover:text-white">{t('admin.bookForCustomer')}</Link>
           <Link to="/admin/applications" className="text-white/90 hover:text-white">{t('admin.applyForUser')}</Link>
+          <Link to="/admin/grouping" className="text-white/90 hover:text-white">Grouping & AI</Link>
           <span className="text-white/50">|</span>
           <span className="text-white/70 text-xs">{user?.name}</span>
           <Link to="/" className="text-white/90 hover:text-white">{t('admin.publicSite')}</Link>

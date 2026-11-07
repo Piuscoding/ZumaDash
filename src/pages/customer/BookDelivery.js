@@ -80,6 +80,8 @@ const BookDelivery = ({ adminMode = false } = {}) => {
   });
   const [saveMoney, setSaveMoney] = useState(false);
   const [saveMoneyWaitMinutes, setSaveMoneyWaitMinutes] = useState(15);
+  const [availableCredit, setAvailableCredit] = useState(0);
+  const [soloBasePrice, setSoloBasePrice] = useState(1500);
 
   const [loading, setLoading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -156,6 +158,33 @@ const BookDelivery = ({ adminMode = false } = {}) => {
         }
       })
       .catch(() => {});
+  }, []);
+
+  // Step 7 – load available non-withdrawable wallet credit for the booking user
+  useEffect(() => {
+    if (adminMode) {
+      // Admin booking on behalf of a customer – use the selected customer's balance
+      const bal = Number(selectedCustomer?.walletCreditBalance) || 0;
+      setAvailableCredit(bal > 0 ? bal : 0);
+      return undefined;
+    }
+    if (!isAuthenticated || !user?._id) {
+      setAvailableCredit(0);
+      return undefined;
+    }
+    api
+      .get('/api/users/me')
+      .then((res) => {
+        const bal = Number(res.data.user?.walletCreditBalance) || 0;
+        setAvailableCredit(bal > 0 ? bal : 0);
+      })
+      .catch(() => {
+        const bal = Number(user?.walletCreditBalance) || 0;
+        setAvailableCredit(bal > 0 ? bal : 0);
+      });
+  }, [adminMode, selectedCustomer?._id, selectedCustomer?.walletCreditBalance, user?._id, isAuthenticated]);
+
+  useEffect(() => {
     api.get('/api/map/config')
       .then((res) => {
         const tile = res.data.mapTileUrl || '';
@@ -211,7 +240,15 @@ const BookDelivery = ({ adminMode = false } = {}) => {
       const payload = data.locationMode ? data : (data.data || data);
       setMapQuote(payload);
       if (payload.locationMode === 'map' && payload.suggestedPrice != null) {
-        setForm((f) => ({ ...f, suggestedPrice: payload.suggestedPrice }));
+        const base = Math.round(Number(payload.suggestedPrice) || 0);
+        setSoloBasePrice(base);
+        setForm((f) => {
+          if (extraStops.length > 0) {
+            const m = computeMultiStopDisplayPrice(base, extraStops, groupingFees);
+            return { ...f, suggestedPrice: m.total };
+          }
+          return { ...f, suggestedPrice: base };
+        });
       }
     } catch (err) {
       const msg = err.response?.data?.message || err.message || 'Quote failed';
@@ -234,9 +271,24 @@ const BookDelivery = ({ adminMode = false } = {}) => {
     if (field === 'pickup') {
       setPickupPin(normalized);
       if (description) setForm((f) => ({ ...f, pickupDescription: description }));
-    } else {
+    } else if (field === 'dropoff') {
       setDropPin(normalized);
       if (description) setForm((f) => ({ ...f, dropoffDescription: description }));
+    } else if (String(field).startsWith('extra-')) {
+      const idx = Number(String(field).replace('extra-', ''));
+      if (Number.isInteger(idx) && idx >= 0) {
+        setExtraStops((list) => {
+          const next = [...list];
+          if (!next[idx]) return list;
+          next[idx] = {
+            ...next[idx],
+            coordinates: normalized,
+            description: description || next[idx].description || '',
+            isMapMode: true,
+          };
+          return next;
+        });
+      }
     }
     setFlyTarget(normalized);
   }, []);
@@ -248,7 +300,16 @@ const BookDelivery = ({ adminMode = false } = {}) => {
       const res = await api.get('/api/map/reverse', { params: { lat: pin.lat, lng: pin.lng } });
       if (res.data?.displayName) {
         if (field === 'pickup') setForm((f) => ({ ...f, pickupDescription: res.data.displayName }));
-        else setForm((f) => ({ ...f, dropoffDescription: res.data.displayName }));
+        else if (field === 'dropoff') setForm((f) => ({ ...f, dropoffDescription: res.data.displayName }));
+        else if (String(field).startsWith('extra-')) {
+          const idx = Number(String(field).replace('extra-', ''));
+          setExtraStops((list) => {
+            const next = [...list];
+            if (!next[idx]) return list;
+            next[idx] = { ...next[idx], description: res.data.displayName, coordinates: pin, isMapMode: true };
+            return next;
+          });
+        }
       }
     } catch (_) {}
   };
@@ -299,7 +360,13 @@ const BookDelivery = ({ adminMode = false } = {}) => {
 
   // Search from textarea content (button or Enter)
   const searchFromTextarea = async (field) => {
-    const q = field === 'pickup' ? form.pickupDescription : form.dropoffDescription;
+    let q = '';
+    if (field === 'pickup') q = form.pickupDescription;
+    else if (field === 'dropoff') q = form.dropoffDescription;
+    else if (String(field).startsWith('extra-')) {
+      const idx = Number(String(field).replace('extra-', ''));
+      q = (extraStops[idx] && extraStops[idx].description) || '';
+    }
     setActiveField(field);
     setSearchQuery(q);
     await runSearch(q);
@@ -645,9 +712,27 @@ const BookDelivery = ({ adminMode = false } = {}) => {
   };
 
 
+  // Keep displayed price = solo base + stop fees
+  useEffect(() => {
+    if (extraStops.length === 0) {
+      if (soloBasePrice > 0 && Number(form.suggestedPrice) !== Number(soloBasePrice)) {
+        // only reset to base when user cleared all extra stops
+        setForm((f) => ({ ...f, suggestedPrice: soloBasePrice }));
+      }
+      return;
+    }
+    const m = computeMultiStopDisplayPrice(soloBasePrice || form.suggestedPrice, extraStops, groupingFees);
+    if (Number(form.suggestedPrice) !== m.total) {
+      setForm((f) => ({ ...f, suggestedPrice: m.total }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [extraStops, soloBasePrice, groupingFees.perAdditionalPickupFee, groupingFees.perAdditionalDropoffFee, groupingFees.textModeFloor]);
+
   const payBaseAmount = Math.max(0, Number(form.suggestedPrice) || 0);
   const payVatAmount = vatPercent > 0 ? Math.round((payBaseAmount * vatPercent) / 100) : 0;
-  const payTotalAmount = payBaseAmount + payVatAmount;
+  const payGrossTotal = payBaseAmount + payVatAmount;
+  const creditToApply = Math.min(availableCredit, payGrossTotal);
+  const payTotalAmount = Math.max(0, payGrossTotal - creditToApply);
 
 
   return (
@@ -796,7 +881,14 @@ const BookDelivery = ({ adminMode = false } = {}) => {
               {bookingMode === 'map' && mapConfig.mapBookingEnabled && (
                 <div style={{ marginBottom: 16 }}>
                   <p style={{ fontSize: 12, color: 'var(--gray-600)', marginBottom: 10 }}>
-                    Search or tap the map. Active field: <strong>{activeField === 'dropoff' ? 'Drop-off' : 'Pickup'}</strong>
+                    Active:{' '}
+                    <strong>
+                      {activeField === 'dropoff'
+                        ? 'Drop-off'
+                        : String(activeField).startsWith('extra-')
+                          ? `Stop ${Number(String(activeField).replace('extra-', '')) + 1}`
+                          : 'Pickup'}
+                    </strong>
                   </p>
                   <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
                     <button
@@ -981,10 +1073,10 @@ const BookDelivery = ({ adminMode = false } = {}) => {
               </div>
 
 
-              {/* Step 2 – private multi-stop (same customer only; never Save Money) */}
+              {/* Additional stops */}
               <div className="card" style={{ padding: 14, marginBottom: 16, border: '1px solid var(--gray-200)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <strong style={{ fontSize: 14 }}>Extra stops (optional)</strong>
+                  <strong style={{ fontSize: 14 }}>Additional stops</strong>
                   <button
                     type="button"
                     className="btn btn-secondary"
@@ -993,25 +1085,22 @@ const BookDelivery = ({ adminMode = false } = {}) => {
                     onClick={() => {
                       const max = groupingFees.maxStopsPerPrivateTrip || 5;
                       if (2 + extraStops.length >= max) {
-                        setStopError(`Maximum ${max} stops (including pickup and drop-off)`);
+                        setStopError(`Maximum ${max} stops`);
                         return;
                       }
                       setStopError('');
                       setExtraStops((s) => [...s, { type: 'dropoff', description: '' }]);
                     }}
                   >
-                    + Add more stops
+                    + Add stop
                   </button>
                 </div>
-                <p style={{ fontSize: 12, color: 'var(--gray-500)', margin: '8px 0 0' }}>
-                  Up to {(groupingFees.maxStopsPerPrivateTrip || 5)} stops total. All pickups must be in the same corridor. Private multi-stop is never shared with other customers.
-                </p>
                 {stopError ? (
                   <div style={{ marginTop: 8, color: '#991b1b', fontSize: 13 }}>{stopError}</div>
                 ) : null}
                 {extraStops.map((stop, idx) => (
                   <div key={idx} style={{ marginTop: 12, padding: 12, background: 'var(--gray-50)', borderRadius: 8 }}>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8, alignItems: 'center' }}>
                       <select
                         value={stop.type}
                         onChange={(e) => {
@@ -1028,6 +1117,21 @@ const BookDelivery = ({ adminMode = false } = {}) => {
                         <option value="pickup">Pickup</option>
                         <option value="dropoff">Drop-off</option>
                       </select>
+                      {bookingMode === 'map' && (
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          style={{
+                            fontSize: 12,
+                            padding: '4px 8px',
+                            fontWeight: activeField === `extra-${idx}` ? 800 : 500,
+                            borderColor: activeField === `extra-${idx}` ? 'var(--primary)' : undefined,
+                          }}
+                          onClick={() => setActiveField(`extra-${idx}`)}
+                        >
+                          Map pin
+                        </button>
+                      )}
                       <button
                         type="button"
                         className="btn btn-secondary"
@@ -1040,7 +1144,7 @@ const BookDelivery = ({ adminMode = false } = {}) => {
                     <textarea
                       rows={2}
                       value={stop.description}
-                      placeholder="Address / landmarks (must include Dutse, Kubwa, Bwari or Ushafa)"
+                      placeholder="Address / landmarks"
                       onChange={(e) => {
                         const description = e.target.value;
                         setExtraStops((list) => {
@@ -1051,22 +1155,18 @@ const BookDelivery = ({ adminMode = false } = {}) => {
                       }}
                       style={{ width: '100%', fontSize: 14 }}
                     />
+                    {(bookingMode === 'map' || mapConfig.mapBookingEnabled) && (
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        style={{ marginTop: 6, padding: '6px 12px', fontSize: 12 }}
+                        onClick={() => searchFromTextarea(`extra-${idx}`)}
+                      >
+                        Find on map
+                      </button>
+                    )}
                   </div>
                 ))}
-                {extraStops.length > 0 && (
-                  <div style={{ marginTop: 12, fontSize: 13, padding: 10, background: '#f0fdf4', borderRadius: 8 }}>
-                    {(() => {
-                      const m = computeMultiStopDisplayPrice(form.suggestedPrice, extraStops, groupingFees);
-                      return (
-                        <>
-                          <div>Extra pickups × ₦{groupingFees.perAdditionalPickupFee}: <strong>₦{m.feeP.toLocaleString()}</strong></div>
-                          <div>Extra drop-offs × ₦{groupingFees.perAdditionalDropoffFee}: <strong>₦{m.feeD.toLocaleString()}</strong></div>
-                          <div style={{ marginTop: 4 }}>Estimated multi-stop total: <strong>₦{m.total.toLocaleString()}</strong></div>
-                        </>
-                      );
-                    })()}
-                  </div>
-                )}
               </div>
 
 <PhotoRow field="pickupPhotos" label="Pickup photos (optional)" />
@@ -1144,12 +1244,9 @@ const BookDelivery = ({ adminMode = false } = {}) => {
                     />
                     <span style={{ fontWeight: 700 }}>Save Money</span>
                   </label>
-                  <p style={{ fontSize: 13, color: 'var(--gray-600)', margin: '8px 0 0' }}>
-                    Wait a few minutes for a neighbour on a similar route. You pay the normal price now; if a match is found you get non-withdrawable credit for the discount.
-                  </p>
                   {saveMoney && (
                     <div className="form-group" style={{ marginTop: 12, marginBottom: 0 }}>
-                      <label>How long can we look? (minutes)</label>
+                      <label>Wait time (minutes)</label>
                       <input
                         type="number"
                         min={1}
@@ -1163,9 +1260,6 @@ const BookDelivery = ({ adminMode = false } = {}) => {
                           setSaveMoneyWaitMinutes(v);
                         }}
                       />
-                      <small style={{ color: 'var(--gray-500)', fontSize: 12 }}>
-                        Max {groupingFees.maxWaitMinutesCustomerCanChoose || 30} minutes
-                      </small>
                     </div>
                   )}
                 </div>
@@ -1237,6 +1331,8 @@ const BookDelivery = ({ adminMode = false } = {}) => {
                     if (bookingMode === 'map' && mapQuote?.locationMode === 'map') return;
                     setPriceError('');
                     handleChange(e);
+                    const v = Math.round(Number(e.target.value) || 0);
+                    if (extraStops.length === 0) setSoloBasePrice(v);
                   }}
                   min={adminMode ? 1 : 1}
                   readOnly={bookingMode === 'map' && mapQuote?.locationMode === 'map'}
@@ -1309,7 +1405,7 @@ const BookDelivery = ({ adminMode = false } = {}) => {
                     <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Account Number</div>
                     <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: 1 }}>{bankDetails.accountNumber || '—'}</div>
                   </div>
-                  <div style={{ marginBottom: payVatAmount > 0 ? 10 : 0 }}>
+                  <div style={{ marginBottom: 10 }}>
                     <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Amount</div>
                     <div style={{ fontSize: 18, fontWeight: 700 }}>
                       ₦{payBaseAmount.toLocaleString()}
@@ -1323,11 +1419,24 @@ const BookDelivery = ({ adminMode = false } = {}) => {
                       </div>
                     </div>
                   )}
+                  {creditToApply > 0 && (
+                    <div style={{ marginBottom: 10 }}>
+                      <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Wallet credit applied</div>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: '#166534' }}>
+                        − ₦{creditToApply.toLocaleString()}
+                      </div>
+                    </div>
+                  )}
                   <div>
                     <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Total to pay</div>
                     <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--primary)' }}>
                       ₦{payTotalAmount.toLocaleString()}
                     </div>
+                    {creditToApply > 0 && (
+                      <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 4 }}>
+                        Credit is non-withdrawable and applied automatically
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1349,11 +1458,24 @@ const BookDelivery = ({ adminMode = false } = {}) => {
                       <div style={{ fontSize: 16, fontWeight: 700 }}>₦{payVatAmount.toLocaleString()}</div>
                     </div>
                   )}
-                  <div style={{ borderTop: payVatAmount > 0 ? '1px solid #e2e8f0' : 'none', paddingTop: payVatAmount > 0 ? 10 : 0 }}>
+                  {creditToApply > 0 && (
+                    <div style={{ marginBottom: 10 }}>
+                      <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Wallet credit applied</div>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: '#166534' }}>
+                        − ₦{creditToApply.toLocaleString()}
+                      </div>
+                    </div>
+                  )}
+                  <div style={{ borderTop: (payVatAmount > 0 || creditToApply > 0) ? '1px solid #e2e8f0' : 'none', paddingTop: (payVatAmount > 0 || creditToApply > 0) ? 10 : 0 }}>
                     <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Total to pay (cash)</div>
                     <div style={{ fontSize: 22, fontWeight: 800, color: '#c2410c' }}>
                       ₦{payTotalAmount.toLocaleString()}
                     </div>
+                    {creditToApply > 0 && (
+                      <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 4 }}>
+                        Credit is non-withdrawable and applied automatically
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

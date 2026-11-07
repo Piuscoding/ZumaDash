@@ -80,7 +80,7 @@ const RiderDashboard = () => {
 
         <div style={{ marginBottom: 20 }}>
           <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 6 }}>
-            Hello, {user?.name?.split(' ')[0]} 👋
+            {user?.name?.split(' ')[0] || 'Rider'}
           </h1>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
             <span

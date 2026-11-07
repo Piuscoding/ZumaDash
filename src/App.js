@@ -55,6 +55,7 @@ import JobHistory from './pages/rider/JobHistory';
 
 // Admin Pages
 import AdminDashboard from './pages/admin/Dashboard';
+import GroupingAI from './pages/admin/GroupingAI';
 
 // Merchant Pages
 import MerchantDashboard from './pages/merchant/Dashboard';
@@ -131,6 +132,7 @@ function App() {
         <Route path="/admin/create-customer" element={<PrivateRoute roles={['admin', 'manager']}><AdminCreateCustomer /></PrivateRoute>} />
         <Route path="/admin/book" element={<PrivateRoute roles={['admin', 'manager']}><AdminBookDelivery /></PrivateRoute>} />
         <Route path="/admin/applications" element={<PrivateRoute roles={['admin', 'manager']}><AdminRiderApply /></PrivateRoute>} />
+        <Route path="/admin/grouping" element={<PrivateRoute roles={['admin', 'manager']}><GroupingAI /></PrivateRoute>} />
 
         {/* Merchant */}
         <Route path="/merchant" element={<PrivateRoute roles={['merchant']}><MerchantDashboard /></PrivateRoute>} />

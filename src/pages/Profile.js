@@ -29,7 +29,7 @@ const Profile = () => {
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
-  const [section, setSection] = useState('profile');
+  const [section, setSection] = useState(() => { try { const s = sessionStorage.getItem('profileSection'); if (s) { sessionStorage.removeItem('profileSection'); return s; } } catch (_) {} return 'profile'; });
 
   const back =
     user?.role === 'rider'
@@ -273,6 +273,9 @@ const Profile = () => {
           {(user?.role === 'customer' || user?.role === 'rider') && (
             <button className={`btn ${section === 'addresses' ? 'btn-primary' : 'btn-secondary'}`} style={{ padding: '8px 14px', fontSize: 13 }} onClick={() => setSection('addresses')}>Saved addresses</button>
           )}
+          {user?.role === 'customer' && (
+            <button className={`btn ${section === 'credits' ? 'btn-primary' : 'btn-secondary'}`} style={{ padding: '8px 14px', fontSize: 13 }} onClick={() => setSection('credits')}>Wallet credits</button>
+          )}
           {user?.role === 'rider' && (
             <button className={`btn ${section === 'docs' ? 'btn-primary' : 'btn-secondary'}`} style={{ padding: '8px 14px', fontSize: 13 }} onClick={() => setSection('docs')}>Bike & documents</button>
           )}
@@ -395,6 +398,76 @@ const Profile = () => {
               </div>
             ))}
             {addresses.length === 0 && <p style={{ color: 'var(--gray-500)', textAlign: 'center' }}>No saved addresses yet</p>}
+          </div>
+        )}
+
+        {section === 'credits' && user?.role === 'customer' && (
+          <div>
+            <div className="card" style={{ marginBottom: 16 }}>
+              <h3 style={{ fontSize: 16, marginBottom: 8 }}>Wallet credits</h3>
+              
+              <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--primary)' }}>
+                ₦{Number(user?.walletCreditBalance || 0).toLocaleString()}
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 4 }}>Available non-withdrawable balance</div>
+            </div>
+            {(Array.isArray(user?.walletCredits) ? user.walletCredits : [])
+              .slice()
+              .sort((a, b) => {
+                const ea = a.expiresAt ? new Date(a.expiresAt).getTime() : 0;
+                const eb = b.expiresAt ? new Date(b.expiresAt).getTime() : 0;
+                return ea - eb;
+              })
+              .map((c, idx) => {
+                const rem = Number(c.remaining) || 0;
+                const exp = c.expiresAt ? new Date(c.expiresAt) : null;
+                const now = Date.now();
+                const expired = exp && exp.getTime() <= now;
+                const status = expired ? 'Expired' : rem > 0 ? 'Active' : 'Used';
+                const badgeColor =
+                  status === 'Active' ? '#166534' : status === 'Expired' ? '#991b1b' : '#6b7280';
+                return (
+                  <div
+                    key={c._id || idx}
+                    className="card"
+                    style={{ padding: 14, marginBottom: 10, display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}
+                  >
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 15 }}>
+                        ₦{Number(c.amount || 0).toLocaleString()}
+                        {rem !== Number(c.amount) && (
+                          <span style={{ fontWeight: 500, color: 'var(--gray-600)', marginLeft: 8 }}>
+                            · remaining ₦{rem.toLocaleString()}
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 4 }}>
+                        Issued {c.issuedAt ? new Date(c.issuedAt).toLocaleDateString() : '—'}
+                        {exp ? ` · Expires ${exp.toLocaleDateString()}` : ''}
+                      </div>
+                      <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 2 }}>
+                        {c.reason === 'save_money_group' ? 'Save Money grouping' : c.reason || 'Credit'}
+                      </div>
+                    </div>
+                    <span
+                      className="badge"
+                      style={{
+                        background: status === 'Active' ? '#dcfce7' : status === 'Expired' ? '#fee2e2' : '#f3f4f6',
+                        color: badgeColor,
+                        fontSize: 11,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {status}
+                    </span>
+                  </div>
+                );
+              })}
+            {(!user?.walletCredits || user.walletCredits.length === 0) && (
+              <p style={{ color: 'var(--gray-500)', textAlign: 'center', padding: 24 }}>
+                No credits yet. When a Save Money match is found you receive non-withdrawable credit here.
+              </p>
+            )}
           </div>
         )}
 
