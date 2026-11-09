@@ -1193,6 +1193,22 @@ const AdminDashboard = () => {
                     </div>
                     <div style={{ fontSize: 13 }}>Pickup: {timelineJob.pickup?.description}</div>
                     <div style={{ fontSize: 13, marginBottom: 8 }}>Drop-off: {timelineJob.dropoff?.description}</div>
+                    {timelineJob.isMultiStop && Array.isArray(timelineJob.stops) && timelineJob.stops.length > 0 && (
+                      <div style={{ fontSize: 12, marginBottom: 10, padding: 8, background: '#f8fafc', borderRadius: 8 }}>
+                        <strong>All stops</strong>
+                        <ol style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+                          {timelineJob.stops
+                            .slice()
+                            .sort((a, b) => (a.sequence || 0) - (b.sequence || 0))
+                            .map((st, i) => (
+                              <li key={i}>
+                                {(st.type || 'stop')}
+                                {st.sequence != null ? ` #${st.sequence}` : ''}: {st.description || '—'}
+                              </li>
+                            ))}
+                        </ol>
+                      </div>
+                    )}
                     {(timelineJob.statusHistory || []).slice().sort((a, b) => new Date(a.timestamp || 0) - new Date(b.timestamp || 0)).map((h, i) => (
                       <div key={i} style={{ padding: '8px 0', borderBottom: '1px solid var(--gray-200)', fontSize: 13 }}>
                         <strong>{String(h.status || '').replace(/_/g, ' ')}</strong>
@@ -1354,6 +1370,26 @@ const AdminDashboard = () => {
                               {j.paymentReference && (
                                 <div style={{ fontSize: 12, marginTop: 4, color: 'var(--primary-dark)' }}>Ref: {j.paymentReference}</div>
                               )}
+                              <div style={{ fontSize: 13, marginTop: 8 }}>
+                                <div><strong>Pickup:</strong> {j.pickup?.description || '—'}</div>
+                                <div><strong>Drop-off:</strong> {j.dropoff?.description || '—'}</div>
+                                {j.isMultiStop && Array.isArray(j.stops) && j.stops.length > 0 && (
+                                  <div style={{ marginTop: 6, fontSize: 12, color: 'var(--gray-700)' }}>
+                                    <strong>All stops:</strong>
+                                    <ol style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+                                      {j.stops
+                                        .slice()
+                                        .sort((a, b) => (a.sequence || 0) - (b.sequence || 0))
+                                        .map((st, i) => (
+                                          <li key={i}>
+                                            {(st.type || 'stop')}
+                                            {st.sequence != null ? ` #${st.sequence}` : ''}: {st.description || '—'}
+                                          </li>
+                                        ))}
+                                    </ol>
+                                  </div>
+                                )}
+                              </div>
                               <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 4 }}>
                                 {j.createdAt ? new Date(j.createdAt).toLocaleString() : ''}
                               </div>

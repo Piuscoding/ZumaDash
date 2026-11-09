@@ -83,6 +83,7 @@ function FollowRider({ riderLocation }) {
 const DeliveryMap = ({
   pickup,
   dropoff,
+  stops = [],
   routeGeometry,
   activeLegGeometry,
   riderLocation,
@@ -108,8 +109,12 @@ const DeliveryMap = ({
     if (pickup?.lat != null) pts.push([Number(pickup.lat), Number(pickup.lng)]);
     if (dropoff?.lat != null) pts.push([Number(dropoff.lat), Number(dropoff.lng)]);
     if (riderLocation?.lat != null) pts.push([Number(riderLocation.lat), Number(riderLocation.lng)]);
+    (stops || []).forEach((st) => {
+      const c = st.coordinates || st;
+      if (c?.lat != null && c?.lng != null) pts.push([Number(c.lat), Number(c.lng)]);
+    });
     return pts;
-  }, [legBPositions, legAPositions, pickup, dropoff, riderLocation]);
+  }, [legBPositions, legAPositions, pickup, dropoff, riderLocation, stops]);
 
   const riderIcon = useMemo(() => {
     if (riderMarkerUrl) {
@@ -167,6 +172,23 @@ const DeliveryMap = ({
             pathOptions={{ color: '#dc2626', fillColor: '#dc2626', fillOpacity: 1 }}
           />
         )}
+        {(stops || []).map((st, i) => {
+          const c = st.coordinates || st;
+          if (c?.lat == null || c?.lng == null) return null;
+          const isPick = st.type === 'pickup';
+          return (
+            <CircleMarker
+              key={`stop-${i}`}
+              center={[Number(c.lat), Number(c.lng)]}
+              radius={8}
+              pathOptions={{
+                color: isPick ? '#0f766e' : '#dc2626',
+                fillColor: isPick ? '#5eead4' : '#fca5a5',
+                fillOpacity: 1,
+              }}
+            />
+          );
+        })}
         {/* Leg B: pickup → drop-off */}
         {showLegB && legBPositions.length > 1 && (
           <Polyline positions={legBPositions} pathOptions={{ color: '#0f766e', weight: 5, opacity: 0.85 }} />

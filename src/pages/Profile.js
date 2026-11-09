@@ -15,7 +15,7 @@ function hasCorridor(text) {
 
 const Profile = () => {
   const { user, logout, refreshUser } = useAuth();
-  const [form, setForm] = useState({ name: '', phone: '', address: '' });
+  const [form, setForm] = useState({ name: '', phone: '', address: '', preferSaveMoney: false });
   const [addresses, setAddresses] = useState([]);
   const [newAddr, setNewAddr] = useState({ label: '', description: '', zone: '' });
   const [bikeForm, setBikeForm] = useState({
@@ -49,6 +49,7 @@ const Profile = () => {
         name: user.name || '',
         phone: user.phone || '',
         address: user.address || '',
+        preferSaveMoney: user.preferSaveMoney === true,
       });
       if (user.bikeDetails?.[0]) {
         const b = user.bikeDetails[0];
@@ -96,6 +97,7 @@ const Profile = () => {
     setMessage('');
     try {
       const payload = { name: form.name, phone: form.phone };
+      if (user?.role === 'customer') payload.preferSaveMoney = !!form.preferSaveMoney;
       if (!addressLocked) {
         const addr = String(form.address || '').trim();
         if (addr && !hasCorridor(addr)) {
@@ -348,6 +350,40 @@ const Profile = () => {
                   </div>
                 )}
               </div>
+              {user?.role === 'customer' && (
+                <div className="form-group" style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <span style={{ fontSize: 14, fontWeight: 500 }}>Save Money default</span>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={!!form.preferSaveMoney}
+                    onClick={() => setForm({ ...form, preferSaveMoney: !form.preferSaveMoney })}
+                    style={{
+                      width: 48,
+                      height: 28,
+                      borderRadius: 14,
+                      border: 'none',
+                      cursor: 'pointer',
+                      background: form.preferSaveMoney ? 'var(--primary)' : '#cbd5e1',
+                      position: 'relative',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <span
+                      style={{
+                        position: 'absolute',
+                        top: 3,
+                        left: form.preferSaveMoney ? 22 : 3,
+                        width: 22,
+                        height: 22,
+                        borderRadius: '50%',
+                        background: '#fff',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                      }}
+                    />
+                  </button>
+                </div>
+              )}
               <button type="submit" className="btn btn-primary btn-block" disabled={loading}>
                 {loading ? 'Saving...' : 'Save profile'}
               </button>
@@ -405,7 +441,9 @@ const Profile = () => {
           <div>
             <div className="card" style={{ marginBottom: 16 }}>
               <h3 style={{ fontSize: 16, marginBottom: 8 }}>Wallet credits</h3>
-              
+              <p style={{ fontSize: 13, color: 'var(--gray-600)', marginBottom: 12 }}>
+                Non-withdrawable credits from Save Money groupings. They are applied automatically on your next booking and expire after 90 days.
+              </p>
               <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--primary)' }}>
                 ₦{Number(user?.walletCreditBalance || 0).toLocaleString()}
               </div>

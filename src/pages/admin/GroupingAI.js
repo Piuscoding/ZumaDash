@@ -11,6 +11,11 @@ const defaultGrouping = {
   perAdditionalPickupFee: 400,
   perAdditionalDropoffFee: 300,
   saveMoneyDiscountPercent: 45,
+  groupedDiscountPercent: 45,
+  multiStopDiscountPercent: 0,
+  enrouteDiscountPercent: 25,
+  enrouteEnabled: true,
+  requireProofPerStop: true,
   maxWaitMinutesCustomerCanChoose: 30,
   automaticPoolWindowMinutes: 12,
   maxStopsPerPrivateTrip: 5,
@@ -30,6 +35,10 @@ const defaultAiWorker = {
   fallbackModelId: 'meta-llama/llama-3.1-8b-instruct',
   enabled: true,
   hasApiKey: false,
+  provider: 'openrouter',
+  useGroqAsDefault: false,
+  groqModelId: 'qwen/qwen3.8-27b',
+  hasGroqKey: false,
 };
 
 const GroupingAI = () => {
@@ -55,6 +64,14 @@ const GroupingAI = () => {
         perAdditionalPickupFee: Number(g.perAdditionalPickupFee) || 400,
         perAdditionalDropoffFee: Number(g.perAdditionalDropoffFee) || 300,
         saveMoneyDiscountPercent: Number(g.saveMoneyDiscountPercent) ?? 45,
+        groupedDiscountPercent: Number(g.groupedDiscountPercent != null ? g.groupedDiscountPercent : g.saveMoneyDiscountPercent) ?? 45,
+        multiStopDiscountPercent: Number(g.multiStopDiscountPercent) || 0,
+        enrouteDiscountPercent:
+          g.enrouteDiscountPercent != null && g.enrouteDiscountPercent !== ''
+            ? Number(g.enrouteDiscountPercent)
+            : 25,
+        enrouteEnabled: g.enrouteEnabled !== false,
+        requireProofPerStop: g.requireProofPerStop !== false,
         maxWaitMinutesCustomerCanChoose: Number(g.maxWaitMinutesCustomerCanChoose) || 30,
         automaticPoolWindowMinutes: Number(g.automaticPoolWindowMinutes) || 12,
         maxStopsPerPrivateTrip: Number(g.maxStopsPerPrivateTrip) || 5,
@@ -76,7 +93,11 @@ const GroupingAI = () => {
         maxTokens: Number(a.maxTokens) || 2048,
         fallbackModelId: a.fallbackModelId || 'meta-llama/llama-3.1-8b-instruct',
         enabled: a.enabled !== false,
-        hasApiKey: !!a.hasApiKey || !!(a.openRouterApiKey && !String(a.openRouterApiKey).includes('•') === false && a.openRouterApiKey),
+        hasApiKey: !!a.hasApiKey || !!(a.openRouterApiKey && !String(a.openRouterApiKey).includes('•')),
+        provider: a.provider === 'groq' || a.useGroqAsDefault ? 'groq' : 'openrouter',
+        useGroqAsDefault: a.provider === 'groq' || a.useGroqAsDefault === true,
+        groqModelId: a.groqModelId || 'qwen/qwen3.8-27b',
+        hasGroqKey: !!a.hasGroqKey || !!a.hasEnvGroqKey,
       });
       // hasApiKey from server is preferred
       if (a.hasApiKey != null) {
@@ -144,7 +165,23 @@ const GroupingAI = () => {
           assignmentMode: grouping.assignmentMode,
           perAdditionalPickupFee: Number(grouping.perAdditionalPickupFee),
           perAdditionalDropoffFee: Number(grouping.perAdditionalDropoffFee),
-          saveMoneyDiscountPercent: Number(grouping.saveMoneyDiscountPercent),
+          saveMoneyDiscountPercent: Number(
+            grouping.groupedDiscountPercent != null
+              ? grouping.groupedDiscountPercent
+              : grouping.saveMoneyDiscountPercent
+          ),
+          groupedDiscountPercent: Number(
+            grouping.groupedDiscountPercent != null
+              ? grouping.groupedDiscountPercent
+              : grouping.saveMoneyDiscountPercent
+          ),
+          multiStopDiscountPercent: Number(grouping.multiStopDiscountPercent) || 0,
+          enrouteDiscountPercent: Math.min(
+            90,
+            Math.max(0, Number(grouping.enrouteDiscountPercent) || 0)
+          ),
+          enrouteEnabled: !!grouping.enrouteEnabled,
+          requireProofPerStop: !!grouping.requireProofPerStop,
           maxWaitMinutesCustomerCanChoose: Number(grouping.maxWaitMinutesCustomerCanChoose),
           automaticPoolWindowMinutes: Number(grouping.automaticPoolWindowMinutes),
           maxStopsPerPrivateTrip: Number(grouping.maxStopsPerPrivateTrip),
@@ -161,6 +198,9 @@ const GroupingAI = () => {
           maxTokens: Number(aiWorker.maxTokens),
           fallbackModelId: aiWorker.fallbackModelId,
           enabled: !!aiWorker.enabled,
+          provider: aiWorker.useGroqAsDefault || aiWorker.provider === 'groq' ? 'groq' : 'openrouter',
+          useGroqAsDefault: !!aiWorker.useGroqAsDefault,
+          groqModelId: aiWorker.groqModelId || 'qwen/qwen3.8-27b',
         },
       };
       if (clearApiKey) {
@@ -280,14 +320,78 @@ const GroupingAI = () => {
             <h2 style={{ fontSize: 16, marginBottom: 12 }}>Pool & discount</h2>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div className="form-group">
-                <label>Save Money discount %</label>
+                <label>Save Money / grouped discount %</label>
                 <input
                   type="number"
                   min={0}
                   max={90}
-                  value={grouping.saveMoneyDiscountPercent}
-                  onChange={(e) => setG('saveMoneyDiscountPercent', e.target.value)}
+                  value={grouping.groupedDiscountPercent != null ? grouping.groupedDiscountPercent : grouping.saveMoneyDiscountPercent}
+                  onChange={(e) => {
+                    setG('groupedDiscountPercent', e.target.value);
+                    setG('saveMoneyDiscountPercent', e.target.value);
+                  }}
                 />
+              </div>
+              <div className="form-group">
+                <label>Private multi-stop discount %</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={90}
+                  value={grouping.multiStopDiscountPercent}
+                  onChange={(e) => setG('multiStopDiscountPercent', e.target.value)}
+                />
+              </div>
+              <div className="form-group">
+                <label>En-route discount %</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={90}
+                  value={grouping.enrouteDiscountPercent}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setG('enrouteDiscountPercent', v === '' ? '' : Number(v));
+                  }}
+                />
+              </div>
+              <div className="form-group" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 14, fontWeight: 500 }}>En-route matching</span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={!!grouping.enrouteEnabled}
+                  onClick={() => setG('enrouteEnabled', !grouping.enrouteEnabled)}
+                  style={{
+                    width: 48, height: 28, borderRadius: 14, border: 'none', cursor: 'pointer',
+                    background: grouping.enrouteEnabled ? 'var(--primary)' : '#cbd5e1', position: 'relative',
+                  }}
+                >
+                  <span style={{
+                    position: 'absolute', top: 3, left: grouping.enrouteEnabled ? 22 : 3,
+                    width: 22, height: 22, borderRadius: '50%', background: '#fff',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                  }} />
+                </button>
+              </div>
+              <div className="form-group" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 14, fontWeight: 500 }}>Proof photo each stop</span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={!!grouping.requireProofPerStop}
+                  onClick={() => setG('requireProofPerStop', !grouping.requireProofPerStop)}
+                  style={{
+                    width: 48, height: 28, borderRadius: 14, border: 'none', cursor: 'pointer',
+                    background: grouping.requireProofPerStop ? 'var(--primary)' : '#cbd5e1', position: 'relative',
+                  }}
+                >
+                  <span style={{
+                    position: 'absolute', top: 3, left: grouping.requireProofPerStop ? 22 : 3,
+                    width: 22, height: 22, borderRadius: '50%', background: '#fff',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                  }} />
+                </button>
               </div>
               <div className="form-group">
                 <label>Text-mode floor (₦)</label>
@@ -449,6 +553,69 @@ const GroupingAI = () => {
                 />
                 AI worker enabled
               </label>
+            </div>
+            <div className="form-group" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: 14, fontWeight: 500 }}>Use Groq as default AI worker</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={!!aiWorker.useGroqAsDefault}
+                onClick={() =>
+                  setAiWorker((prev) => ({
+                    ...prev,
+                    useGroqAsDefault: !prev.useGroqAsDefault,
+                    provider: !prev.useGroqAsDefault ? 'groq' : 'openrouter',
+                  }))
+                }
+                style={{
+                  width: 48, height: 28, borderRadius: 14, border: 'none', cursor: 'pointer',
+                  background: aiWorker.useGroqAsDefault ? 'var(--primary)' : '#cbd5e1', position: 'relative',
+                }}
+              >
+                <span style={{
+                  position: 'absolute', top: 3, left: aiWorker.useGroqAsDefault ? 22 : 3,
+                  width: 22, height: 22, borderRadius: '50%', background: '#fff',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                }} />
+              </button>
+            </div>
+            <p style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: -8, marginBottom: 12 }}>
+              {aiWorker.hasGroqKey
+                ? 'Groq key available. Default model qwen/qwen3.8-27b (free). Change below and Save.'
+                : 'Set GROQ_API_KEY in backend .env. Free models: qwen/qwen3.8-27b, openai/gpt-oss-20b.'}
+            </p>
+            <div className="form-group">
+              <label>Groq model (editable)</label>
+              <select
+                value={
+                  ['qwen/qwen3.8-27b', 'openai/gpt-oss-20b', 'openai/gpt-oss-120b'].includes(aiWorker.groqModelId)
+                    ? aiWorker.groqModelId
+                    : '__custom__'
+                }
+                onChange={(e) => {
+                  if (e.target.value === '__custom__') {
+                    setA('groqModelId', aiWorker.groqModelId || 'qwen/qwen3.8-27b');
+                  } else {
+                    setA('groqModelId', e.target.value);
+                  }
+                }}
+                style={{ marginBottom: 8 }}
+              >
+                <option value="qwen/qwen3.8-27b">qwen/qwen3.8-27b (recommended free)</option>
+                <option value="openai/gpt-oss-20b">openai/gpt-oss-20b</option>
+                <option value="openai/gpt-oss-120b">openai/gpt-oss-120b</option>
+                <option value="__custom__">Custom model id…</option>
+              </select>
+              <input
+                type="text"
+                value={aiWorker.groqModelId || ''}
+                onChange={(e) => setA('groqModelId', e.target.value)}
+                placeholder="e.g. qwen/qwen3.8-27b"
+                style={{ width: '100%' }}
+              />
+              <small style={{ fontSize: 12, color: 'var(--gray-500)' }}>
+                Your dashboard shows qwen returns 200; gpt-oss often returns json_validate_failed on free tier.
+              </small>
             </div>
             <div className="form-group">
               <label>OpenRouter API key (write-only)</label>

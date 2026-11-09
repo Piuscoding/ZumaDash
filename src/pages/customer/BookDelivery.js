@@ -177,6 +177,7 @@ const BookDelivery = ({ adminMode = false } = {}) => {
       .then((res) => {
         const bal = Number(res.data.user?.walletCreditBalance) || 0;
         setAvailableCredit(bal > 0 ? bal : 0);
+        if (res.data.user?.preferSaveMoney === true) setSaveMoney(true);
       })
       .catch(() => {
         const bal = Number(user?.walletCreditBalance) || 0;
@@ -221,49 +222,66 @@ const BookDelivery = ({ adminMode = false } = {}) => {
 
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
-  const requestMapQuote = useCallback(async (pPin, dPin, size) => {
-    if (!pPin || !dPin) {
-      setMapQuote(null);
-      return;
-    }
-    setQuoteLoading(true);
-    try {
-      const res = await api.post('/api/map/quote', {
-        pickupLat: Number(pPin.lat),
-        pickupLng: Number(pPin.lng),
-        dropLat: Number(dPin.lat),
-        dropLng: Number(dPin.lng),
-        packageSize: size || form.packageSize,
-      });
-      const data = res.data || {};
-      // Normalize: some proxies wrap payload
-      const payload = data.locationMode ? data : (data.data || data);
-      setMapQuote(payload);
-      if (payload.locationMode === 'map' && payload.suggestedPrice != null) {
-        const base = Math.round(Number(payload.suggestedPrice) || 0);
-        setSoloBasePrice(base);
-        setForm((f) => {
-          if (extraStops.length > 0) {
-            const m = computeMultiStopDisplayPrice(base, extraStops, groupingFees);
-            return { ...f, suggestedPrice: m.total };
-          }
-          return { ...f, suggestedPrice: base };
-        });
+  const requestMapQuote = useCallback(
+    async (pPin, dPin, size, stops = []) => {
+      if (!pPin || !dPin) {
+        setMapQuote(null);
+        return;
       }
-    } catch (err) {
-      const msg = err.response?.data?.message || err.message || 'Quote failed';
-      setMapQuote({ locationMode: 'text', message: msg, success: false });
-    } finally {
-      setQuoteLoading(false);
-    }
-  }, [form.packageSize]);
+      const waypoints = (stops || [])
+        .filter((s) => s && s.coordinates && s.coordinates.lat != null && s.coordinates.lng != null)
+        .map((s) => ({
+          lat: Number(s.coordinates.lat),
+          lng: Number(s.coordinates.lng),
+        }));
+      setQuoteLoading(true);
+      try {
+        const res = await api.post('/api/map/quote', {
+          pickupLat: Number(pPin.lat),
+          pickupLng: Number(pPin.lng),
+          dropLat: Number(dPin.lat),
+          dropLng: Number(dPin.lng),
+          packageSize: size || form.packageSize,
+          waypoints,
+        });
+        const data = res.data || {};
+        const payload = data.locationMode ? data : data.data || data;
+        setMapQuote(payload);
+        if (payload.locationMode === 'map' && payload.suggestedPrice != null) {
+          // Map factors apply only to primary pickup→drop; extras add flat fees only
+          const routeBase = Math.round(
+            Number(payload.primarySuggestedPrice != null ? payload.primarySuggestedPrice : payload.suggestedPrice) || 0
+          );
+          const m = computeMultiStopDisplayPrice(routeBase, stops || [], groupingFees);
+          setSoloBasePrice(routeBase);
+          setForm((f) => ({ ...f, suggestedPrice: m.total }));
+        }
+      } catch (err) {
+        const msg = err.response?.data?.message || err.message || 'Quote failed';
+        setMapQuote({ locationMode: 'text', message: msg, success: false });
+      } finally {
+        setQuoteLoading(false);
+      }
+    },
+    [form.packageSize, groupingFees]
+  );
 
-  // Whenever both pins exist in map mode, fetch route + admin price formula
+  // Stable signature of extra stop types + coordinates (avoids re-quote on every keystroke)
+  const extraStopsRouteKey = JSON.stringify(
+    (extraStops || []).map((s) => ({
+      type: s.type,
+      lat: s.coordinates?.lat ?? null,
+      lng: s.coordinates?.lng ?? null,
+    }))
+  );
+
+  // Map mode: recalculate route, ETA and price whenever pins or mapped extra stops change
   useEffect(() => {
     if (bookingMode !== 'map') return;
     if (!pickupPin || !dropPin) return;
-    requestMapQuote(pickupPin, dropPin, form.packageSize);
-  }, [bookingMode, pickupPin, dropPin, form.packageSize, requestMapQuote]);
+    requestMapQuote(pickupPin, dropPin, form.packageSize, extraStops);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookingMode, pickupPin, dropPin, form.packageSize, extraStopsRouteKey, requestMapQuote]);
 
   const applyPin = useCallback((field, pin, description) => {
     if (!pin || pin.lat == null || pin.lng == null) return;
@@ -439,6 +457,7 @@ const BookDelivery = ({ adminMode = false } = {}) => {
         ? 'bank_transfer'
         : form.paymentMethod,
     suggestedPrice: Number(form.suggestedPrice),
+    soloBasePrice: Number(soloBasePrice) || Number(form.suggestedPrice),
         isMultiStop: extraStops.length > 0,
         saveMoney:
           extraStops.length === 0 &&
@@ -509,6 +528,29 @@ const BookDelivery = ({ adminMode = false } = {}) => {
         packageSize: form.packageSize,
         packageDescription: form.packageDescription,
         suggestedPrice: Number(form.suggestedPrice),
+        soloBasePrice: Number(soloBasePrice) || Number(form.suggestedPrice),
+        isMultiStop: extraStops.length > 0,
+        extraStops: extraStops.map((s) => ({
+          type: s.type,
+          description: s.description,
+          coordinates: s.coordinates || undefined,
+          zone: s.zone || undefined,
+          contactName: s.contactName || '',
+          contactPhone: s.contactPhone || '',
+          photos: s.photos || [],
+          voiceNote: s.voiceNote || '',
+          isMapMode: !!s.isMapMode || !!(s.coordinates && s.coordinates.lat != null),
+        })),
+        saveMoney:
+          extraStops.length === 0 &&
+          groupingFees.saveMoneyMode === 'user_choice' &&
+          saveMoney,
+        saveMoneyWaitMinutes:
+          extraStops.length === 0 &&
+          groupingFees.saveMoneyMode === 'user_choice' &&
+          saveMoney
+            ? Number(saveMoneyWaitMinutes) || 15
+            : undefined,
         locationMode: bookingMode === 'map' && mapQuote?.locationMode === 'map' ? 'map' : 'text',
         mapDistanceKm: bookingMode === 'map' && mapQuote?.locationMode === 'map' ? mapQuote.mapDistanceKm : undefined,
         routeGeometry: bookingMode === 'map' && mapQuote?.locationMode === 'map' ? mapQuote.routeGeometry : undefined,
@@ -728,6 +770,11 @@ const BookDelivery = ({ adminMode = false } = {}) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [extraStops, soloBasePrice, groupingFees.perAdditionalPickupFee, groupingFees.perAdditionalDropoffFee, groupingFees.textModeFloor]);
 
+  const stopFeeBreakdown = (() => {
+    if (!extraStops.length) return null;
+    const m = computeMultiStopDisplayPrice(soloBasePrice || form.suggestedPrice, extraStops, groupingFees);
+    return m;
+  })();
   const payBaseAmount = Math.max(0, Number(form.suggestedPrice) || 0);
   const payVatAmount = vatPercent > 0 ? Math.round((payBaseAmount * vatPercent) / 100) : 0;
   const payGrossTotal = payBaseAmount + payVatAmount;
@@ -1010,7 +1057,9 @@ const BookDelivery = ({ adminMode = false } = {}) => {
                           ? ` · ETA ~${Math.round((mapQuote.displayDurationSec || 0) / 60)} min`
                           : ''}
                         {' · '}
-                        <span style={{ fontWeight: 800 }}>₦{Number(mapQuote.suggestedPrice || 0).toLocaleString()}</span>
+                        <span style={{ fontWeight: 800 }}>
+                          ₦{Number(form.suggestedPrice || mapQuote.suggestedPrice || 0).toLocaleString()}
+                        </span>
                       </p>
                     </div>
                   )}
@@ -1211,7 +1260,7 @@ const BookDelivery = ({ adminMode = false } = {}) => {
                   }
                   // Apply multi-stop fee into suggested price display for next steps
                   if (extraStops.length > 0) {
-                    const m = computeMultiStopDisplayPrice(form.suggestedPrice, extraStops, groupingFees);
+                    const m = computeMultiStopDisplayPrice(soloBasePrice || form.suggestedPrice, extraStops, groupingFees);
                     setForm((f) => ({ ...f, suggestedPrice: m.total }));
                   }
                   setError('');
@@ -1235,18 +1284,44 @@ const BookDelivery = ({ adminMode = false } = {}) => {
             <>
               
               {groupingFees.saveMoneyMode === 'user_choice' && extraStops.length === 0 && (
-                <div className="card" style={{ padding: 14, marginBottom: 16, border: '1px dashed var(--primary)' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={saveMoney}
-                      onChange={(e) => setSaveMoney(e.target.checked)}
-                    />
-                    <span style={{ fontWeight: 700 }}>Save Money</span>
-                  </label>
+                <div className="card" style={{ padding: 14, marginBottom: 16, border: '1px solid var(--gray-200)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                    <span style={{ fontWeight: 600, fontSize: 14 }}>Save Money</span>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={saveMoney}
+                      onClick={() => setSaveMoney((v) => !v)}
+                      style={{
+                        width: 48,
+                        height: 28,
+                        borderRadius: 14,
+                        border: 'none',
+                        cursor: 'pointer',
+                        background: saveMoney ? 'var(--primary)' : '#cbd5e1',
+                        position: 'relative',
+                        transition: 'background 0.15s',
+                        flexShrink: 0,
+                      }}
+                    >
+                      <span
+                        style={{
+                          position: 'absolute',
+                          top: 3,
+                          left: saveMoney ? 22 : 3,
+                          width: 22,
+                          height: 22,
+                          borderRadius: '50%',
+                          background: '#fff',
+                          transition: 'left 0.15s',
+                          boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                        }}
+                      />
+                    </button>
+                  </div>
                   {saveMoney && (
                     <div className="form-group" style={{ marginTop: 12, marginBottom: 0 }}>
-                      <label>Wait time (minutes)</label>
+                      <label>Wait (min)</label>
                       <input
                         type="number"
                         min={1}
@@ -1329,16 +1404,24 @@ const BookDelivery = ({ adminMode = false } = {}) => {
                   value={form.suggestedPrice}
                   onChange={(e) => {
                     if (bookingMode === 'map' && mapQuote?.locationMode === 'map') return;
+                    if (extraStops.length > 0) return;
                     setPriceError('');
                     handleChange(e);
                     const v = Math.round(Number(e.target.value) || 0);
-                    if (extraStops.length === 0) setSoloBasePrice(v);
+                    setSoloBasePrice(v);
                   }}
                   min={adminMode ? 1 : 1}
-                  readOnly={bookingMode === 'map' && mapQuote?.locationMode === 'map'}
-                  disabled={bookingMode === 'map' && mapQuote?.locationMode === 'map'}
+                  readOnly={
+                    (bookingMode === 'map' && mapQuote?.locationMode === 'map') ||
+                    extraStops.length > 0
+                  }
+                  disabled={
+                    (bookingMode === 'map' && mapQuote?.locationMode === 'map') ||
+                    extraStops.length > 0
+                  }
                   style={
-                    bookingMode === 'map' && mapQuote?.locationMode === 'map'
+                    (bookingMode === 'map' && mapQuote?.locationMode === 'map') ||
+                    extraStops.length > 0
                       ? { background: '#f1f5f9', cursor: 'not-allowed' }
                       : undefined
                   }
@@ -1348,10 +1431,12 @@ const BookDelivery = ({ adminMode = false } = {}) => {
                 ) : (
                   <small style={{ color: 'var(--gray-500)', fontSize: 12 }}>
                     {bookingMode === 'map' && mapQuote?.locationMode === 'map'
-                      ? 'Map suggested price (not editable).'
-                      : adminMode
-                        ? 'Admin booking — no minimum enforced here.'
-                        : 'Minimum ₦1,500 in text mode. You can edit this amount.'}
+                      ? 'Map price (includes additional stops when set).'
+                      : extraStops.length > 0
+                        ? 'Price includes additional stops (not editable).'
+                        : adminMode
+                          ? 'Admin booking — no minimum enforced here.'
+                          : 'Minimum ₦1,500 in text mode.'}
                   </small>
                 )}
               </div>
@@ -1405,12 +1490,37 @@ const BookDelivery = ({ adminMode = false } = {}) => {
                     <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Account Number</div>
                     <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: 1 }}>{bankDetails.accountNumber || '—'}</div>
                   </div>
+                  {stopFeeBreakdown ? (
+                    <>
+                      <div style={{ marginBottom: 8 }}>
+                        <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Base delivery</div>
+                        <div style={{ fontSize: 15, fontWeight: 600 }}>₦{Number(stopFeeBreakdown.base || soloBasePrice || 0).toLocaleString()}</div>
+                      </div>
+                      {stopFeeBreakdown.feeP > 0 && (
+                        <div style={{ marginBottom: 8 }}>
+                          <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Extra pickups</div>
+                          <div style={{ fontSize: 15, fontWeight: 600 }}>₦{stopFeeBreakdown.feeP.toLocaleString()}</div>
+                        </div>
+                      )}
+                      {stopFeeBreakdown.feeD > 0 && (
+                        <div style={{ marginBottom: 8 }}>
+                          <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Extra drop-offs</div>
+                          <div style={{ fontSize: 15, fontWeight: 600 }}>₦{stopFeeBreakdown.feeD.toLocaleString()}</div>
+                        </div>
+                      )}
+                      <div style={{ marginBottom: 10 }}>
+                        <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Delivery subtotal</div>
+                        <div style={{ fontSize: 18, fontWeight: 700 }}>₦{payBaseAmount.toLocaleString()}</div>
+                      </div>
+                    </>
+                  ) : (
                   <div style={{ marginBottom: 10 }}>
                     <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Amount</div>
                     <div style={{ fontSize: 18, fontWeight: 700 }}>
                       ₦{payBaseAmount.toLocaleString()}
                     </div>
                   </div>
+                  )}
                   {payVatAmount > 0 && (
                     <div style={{ marginBottom: 10 }}>
                       <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>VAT ({vatPercent}%)</div>
@@ -1448,10 +1558,35 @@ const BookDelivery = ({ adminMode = false } = {}) => {
                   {vatPercent > 0 ? ` VAT is ${vatPercent}% on the delivery amount.` : ''}
                 </p>
                 <div style={{ background: 'white', borderRadius: 10, padding: 16 }}>
+                  {stopFeeBreakdown ? (
+                    <>
+                      <div style={{ marginBottom: 8 }}>
+                        <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Base delivery</div>
+                        <div style={{ fontSize: 15, fontWeight: 600 }}>₦{Number(stopFeeBreakdown.base || soloBasePrice || 0).toLocaleString()}</div>
+                      </div>
+                      {stopFeeBreakdown.feeP > 0 && (
+                        <div style={{ marginBottom: 8 }}>
+                          <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Extra pickups</div>
+                          <div style={{ fontSize: 15, fontWeight: 600 }}>₦{stopFeeBreakdown.feeP.toLocaleString()}</div>
+                        </div>
+                      )}
+                      {stopFeeBreakdown.feeD > 0 && (
+                        <div style={{ marginBottom: 8 }}>
+                          <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Extra drop-offs</div>
+                          <div style={{ fontSize: 15, fontWeight: 600 }}>₦{stopFeeBreakdown.feeD.toLocaleString()}</div>
+                        </div>
+                      )}
+                      <div style={{ marginBottom: 10 }}>
+                        <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Delivery subtotal</div>
+                        <div style={{ fontSize: 18, fontWeight: 700 }}>₦{payBaseAmount.toLocaleString()}</div>
+                      </div>
+                    </>
+                  ) : (
                   <div style={{ marginBottom: 10 }}>
                     <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Amount</div>
                     <div style={{ fontSize: 18, fontWeight: 700 }}>₦{payBaseAmount.toLocaleString()}</div>
                   </div>
+                  )}
                   {payVatAmount > 0 && (
                     <div style={{ marginBottom: 10 }}>
                       <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>VAT ({vatPercent}%)</div>

@@ -249,6 +249,48 @@ const TrackDelivery = () => {
     }
   };
 
+  const completeNextStop = async () => {
+    if (!job) return;
+    setActionLoading(true);
+    setMessage('');
+    try {
+      // Soft location refresh only — do not block stop completion if GPS times out
+      // (LIVE start still requires GPS via updateStatus). Best-effort share if available.
+      if (
+        job.locationMode === 'map' ||
+        (job.pickup?.coordinates?.lat && job.dropoff?.coordinates?.lat)
+      ) {
+        try {
+          const { requestDeviceLocation } = await import('../../utils/geo');
+          const coords = await requestDeviceLocation({ timeout: 8000, maximumAge: 60000 });
+          if (coords && coords.lat != null) {
+            try {
+              await api.post(`/api/jobs/${id}/location`, {
+                lat: coords.lat,
+                lng: coords.lng,
+              });
+            } catch (_) {}
+          }
+        } catch (_) {
+          /* ignore timeout — stop can still be completed */
+        }
+      }
+      let photoUrl = null;
+      if (proofFile) {
+        photoUrl = await uploadImage(proofFile, 'zumadash/proof/stop');
+      }
+      const res = await api.put(`/api/jobs/${id}/complete-stop`, { photo: photoUrl });
+      setMessage(res.data.message || 'Stop completed');
+      setProofFile(null);
+      setProofPreview(null);
+      fetchJob();
+    } catch (err) {
+      setMessage(err.response?.data?.message || 'Failed to complete stop');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const acceptOffer = async (offerId) => {
     setActionLoading(true);
     try {
@@ -560,6 +602,7 @@ const TrackDelivery = () => {
               <DeliveryMap
                 pickup={job.pickup?.coordinates}
                 dropoff={job.dropoff?.coordinates}
+                stops={Array.isArray(job.stops) ? job.stops : []}
                 routeGeometry={job.locationMode === 'map' ? job.routeGeometry : null}
                 activeLegGeometry={job.locationMode === 'map' ? activeLegGeometry : null}
                 riderLocation={liveLoc || job.riderLastLocation}
@@ -653,6 +696,23 @@ const TrackDelivery = () => {
             <div style={{ marginBottom: 8 }}>
               <strong>Drop-off:</strong> {job.dropoff?.description}
             </div>
+            {job.isMultiStop && Array.isArray(job.stops) && job.stops.length > 0 && (
+              <div style={{ marginTop: 12, padding: 12, background: 'var(--gray-50)', borderRadius: 8 }}>
+                <strong style={{ fontSize: 13 }}>All stops</strong>
+                <ol style={{ margin: '8px 0 0', paddingLeft: 18 }}>
+                  {job.stops
+                    .slice()
+                    .sort((a, b) => (a.sequence || 0) - (b.sequence || 0))
+                    .map((st, i) => (
+                      <li key={i} style={{ marginBottom: 6, fontSize: 13, opacity: (st.status || 'pending') === 'completed' ? 0.6 : 1 }}>
+                        <span style={{ textTransform: 'capitalize' }}>{st.type || 'stop'}</span>
+                        {st.sequence != null ? ` #${st.sequence}` : ''}: {st.description || '—'}
+                        {(st.status || 'pending') === 'completed' ? ' · Done' : ''}
+                      </li>
+                    ))}
+                </ol>
+              </div>
+            )}
             {job.merchantSelfBooking ? (
               <div
                 style={{
@@ -910,34 +970,118 @@ const TrackDelivery = () => {
           </div>
         )}
 
-        {/* Rider status updates */}
-        {isRider && ['accepted', 'live', 'picked'].includes(job.status) && (
+        {/* Rider status updates — sequential stops for multi-stop / grouped (simple UI) */}
+        {isRider &&
+          (['accepted', 'live', 'picked'].includes(job.status) ||
+            (Array.isArray(job.stops) &&
+              job.stops.some((st) => (st.status || 'pending') !== 'completed') &&
+              !['completed', 'cancelled'].includes(job.status))) && (
           <div className="card" style={{ marginTop: 12 }}>
-            <h3 style={{ fontSize: 15, marginBottom: 12 }}>Update status</h3>
-            <div style={{ marginBottom: 12 }}>
-              <label style={{ fontSize: 13, fontWeight: 500 }}>Proof photo (required)</label>
-              <input type="file" accept="image/*" onChange={onProofSelect} style={{ display: 'block', marginTop: 6 }} />
-              {proofPreview && (
-                <img src={proofPreview} alt="preview" style={{ width: 100, height: 100, objectFit: 'cover', borderRadius: 8, marginTop: 8 }} />
-              )}
-            </div>
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              {job.status === 'accepted' && (
-                <button className="btn btn-primary" onClick={() => updateStatus('live')} disabled={actionLoading}>
-                  {actionLoading ? '…' : 'Start (LIVE)'}
-                </button>
-              )}
-              {job.status === 'live' && (
-                <button className="btn btn-primary" onClick={() => updateStatus('picked')} disabled={actionLoading}>
-                  {actionLoading ? '…' : 'Mark PICKED'}
-                </button>
-              )}
-              {job.status === 'picked' && (
-                <button className="btn btn-primary" onClick={() => updateStatus('pending_clearance')} disabled={actionLoading}>
-                  {actionLoading ? '…' : 'Mark DELIVERED'}
-                </button>
-              )}
-            </div>
+            <h3 style={{ fontSize: 15, marginBottom: 12 }}>
+              {(job.isMultiStop || job.bundleId || (Array.isArray(job.stops) && job.stops.length > 1))
+                ? 'Stops (in order)'
+                : 'Update status'}
+            </h3>
+            {(job.isMultiStop || job.bundleId || (Array.isArray(job.stops) && job.stops.length > 1)) &&
+            Array.isArray(job.stops) &&
+            job.stops.length > 0 ? (
+              <>
+                <ol style={{ margin: '0 0 12px', paddingLeft: 18 }}>
+                  {job.stops
+                    .slice()
+                    .sort((a, b) => (a.sequence || 0) - (b.sequence || 0))
+                    .map((st, i) => {
+                      const done = (st.status || 'pending') === 'completed';
+                      const ordered = job.stops
+                        .slice()
+                        .sort((a, b) => (a.sequence || 0) - (b.sequence || 0));
+                      const nextPending = ordered.find((x) => (x.status || 'pending') === 'pending');
+                      const isNext =
+                        nextPending &&
+                        (nextPending.sequence === st.sequence ||
+                          (String(nextPending.description || '') === String(st.description || '') &&
+                            nextPending.type === st.type));
+                      return (
+                        <li
+                          key={i}
+                          style={{
+                            marginBottom: 8,
+                            fontSize: 13,
+                            opacity: done ? 0.55 : 1,
+                            fontWeight: isNext ? 700 : 400,
+                            color: done ? 'var(--gray-500)' : isNext ? 'var(--primary)' : 'inherit',
+                          }}
+                        >
+                          <span style={{ textTransform: 'capitalize' }}>{st.type}</span>
+                          {st.sequence != null ? ` #${st.sequence}` : ''}: {(st.description || '—').slice(0, 72)}
+                          {done ? ' · Done' : isNext ? ' · Next' : ''}
+                        </li>
+                      );
+                    })}
+                </ol>
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ fontSize: 13, fontWeight: 500 }}>Proof photo</label>
+                  <input type="file" accept="image/*" onChange={onProofSelect} style={{ display: 'block', marginTop: 6 }} />
+                  {proofPreview && (
+                    <img src={proofPreview} alt="preview" style={{ width: 100, height: 100, objectFit: 'cover', borderRadius: 8, marginTop: 8 }} />
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  {job.status === 'accepted' && (
+                    <button className="btn btn-secondary" onClick={() => updateStatus('live')} disabled={actionLoading}>
+                      {actionLoading ? '…' : 'Start (LIVE)'}
+                    </button>
+                  )}
+                  {job.stops.some((st) => (st.status || 'pending') === 'pending') && (
+                    <button
+                      className="btn btn-primary"
+                      onClick={completeNextStop}
+                      disabled={actionLoading || job.status === 'accepted'}
+                      title={job.status === 'accepted' ? 'Start LIVE first' : undefined}
+                    >
+                      {actionLoading
+                        ? '…'
+                        : (() => {
+                            const n = job.stops
+                              .slice()
+                              .sort((a, b) => (a.sequence || 0) - (b.sequence || 0))
+                              .find((x) => (x.status || 'pending') === 'pending');
+                            if (!n) return 'Complete stop';
+                            const num = n.sequence != null ? ` #${n.sequence}` : '';
+                            return n.type === 'pickup' ? `Mark pickup${num} done` : `Mark drop-off${num} done`;
+                          })()}
+                    </button>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ fontSize: 13, fontWeight: 500 }}>Proof photo (required)</label>
+                  <input type="file" accept="image/*" onChange={onProofSelect} style={{ display: 'block', marginTop: 6 }} />
+                  {proofPreview && (
+                    <img src={proofPreview} alt="preview" style={{ width: 100, height: 100, objectFit: 'cover', borderRadius: 8, marginTop: 8 }} />
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  {job.status === 'accepted' && (
+                    <button className="btn btn-primary" onClick={() => updateStatus('live')} disabled={actionLoading}>
+                      {actionLoading ? '…' : 'Start (LIVE)'}
+                    </button>
+                  )}
+                  {job.status === 'live' && (
+                    <button className="btn btn-primary" onClick={() => updateStatus('picked')} disabled={actionLoading}>
+                      {actionLoading ? '…' : 'Mark PICKED'}
+                    </button>
+                  )}
+                  {job.status === 'picked' && (
+                    <button className="btn btn-primary" onClick={() => updateStatus('pending_clearance')} disabled={actionLoading}>
+                      {actionLoading ? '…' : 'Mark DELIVERED'}
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -957,6 +1101,7 @@ const TrackDelivery = () => {
           <DeliveryMap
             pickup={job.pickup?.coordinates}
             dropoff={job.dropoff?.coordinates}
+            stops={Array.isArray(job.stops) ? job.stops : []}
             routeGeometry={job.locationMode === 'map' ? job.routeGeometry : null}
             activeLegGeometry={job.locationMode === 'map' ? activeLegGeometry : null}
             riderLocation={liveLoc || job.riderLastLocation}
