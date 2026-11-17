@@ -57,7 +57,22 @@ const AvailableJobs = () => {
   const fetchTrips = async () => {
     try {
       const res = await api.get('/api/trips/available');
-      setTrips(Array.isArray(res.data.trips) ? res.data.trips : []);
+      const raw = Array.isArray(res.data.trips) ? res.data.trips : [];
+      // Unique by trip id, then by stop signature (client guard only)
+      const byId = new Map();
+      for (const tr of raw) {
+        byId.set(String(tr._id), tr);
+      }
+      const byStops = new Map();
+      for (const tr of byId.values()) {
+        const key = (tr.stops || [])
+          .map((st) => `${st.type || ''}:${String(st.description || '').toLowerCase().trim()}`)
+          .sort()
+          .join('|');
+        const k = key || String(tr._id);
+        if (!byStops.has(k)) byStops.set(k, tr);
+      }
+      setTrips([...byStops.values()]);
     } catch (_) {
       setTrips([]);
     }
@@ -387,24 +402,18 @@ const AvailableJobs = () => {
             Showing <strong>{displayedJobs.length}</strong>
             {jobs.length !== displayedJobs.length ? ` of ${jobs.length}` : ''} open job
             {displayedJobs.length === 1 ? '' : 's'}
+            {trips.length > 0
+              ? ` · ${trips.length} grouped trip offer${trips.length === 1 ? '' : 's'}`
+              : ''}
           </p>
         )}
 
         {loading ? (
           <p style={{ textAlign: 'center', color: 'var(--gray-500)' }}>Loading available jobs...</p>
-        ) : displayedJobs.length === 0 ? (
-          <div className="card" style={{ textAlign: 'center', padding: 40 }}>
-            <p style={{ color: 'var(--gray-500)' }}>
-              {jobs.length === 0
-                ? 'No open jobs at the moment. Check back soon.'
-                : 'No jobs match this corridor filter. Clear the filter to see all jobs.'}
-            </p>
-          </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            
         {trips.length > 0 && (
-          <div style={{ marginBottom: 20 }}>
+          <div style={{ marginBottom: 4 }}>
             <h2 style={{ fontSize: 16, marginBottom: 10 }}>Grouped trip offers</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {trips.map((tr) => (
@@ -439,6 +448,20 @@ const AvailableJobs = () => {
             </div>
           </div>
         )}
+
+            {displayedJobs.length === 0 && trips.length === 0 && (
+              <div className="card" style={{ textAlign: 'center', padding: 40 }}>
+                <p style={{ color: 'var(--gray-500)' }}>
+                  No open jobs or grouped trip offers at the moment. Check back soon.
+                </p>
+              </div>
+            )}
+
+            {displayedJobs.length === 0 && trips.length > 0 && jobs.length > 0 && (
+              <p style={{ fontSize: 13, color: 'var(--gray-500)' }}>
+                No solo jobs match this corridor filter. Grouped offers above are still available.
+              </p>
+            )}
 
             {displayedJobs.map((job) => (
               <div key={job._id} className="card">

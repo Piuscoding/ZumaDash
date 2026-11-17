@@ -481,7 +481,7 @@ const BookDelivery = ({ adminMode = false } = {}) => {
           isMapMode: !!s.isMapMode,
         })),
 
-    locationMode: bookingMode === 'map' && mapQuote?.locationMode === 'map' ? 'map' : 'text',
+    locationMode: bookingMode === 'map' && (pickupPin || mapQuote?.locationMode === 'map') ? 'map' : 'text',
     mapDistanceKm:
       bookingMode === 'map' && mapQuote?.locationMode === 'map' ? mapQuote.mapDistanceKm : undefined,
     routeGeometry:
@@ -551,7 +551,7 @@ const BookDelivery = ({ adminMode = false } = {}) => {
           saveMoney
             ? Number(saveMoneyWaitMinutes) || 15
             : undefined,
-        locationMode: bookingMode === 'map' && mapQuote?.locationMode === 'map' ? 'map' : 'text',
+        locationMode: bookingMode === 'map' && (pickupPin || mapQuote?.locationMode === 'map') ? 'map' : 'text',
         mapDistanceKm: bookingMode === 'map' && mapQuote?.locationMode === 'map' ? mapQuote.mapDistanceKm : undefined,
         routeGeometry: bookingMode === 'map' && mapQuote?.locationMode === 'map' ? mapQuote.routeGeometry : undefined,
         osrmDurationSec: bookingMode === 'map' && mapQuote?.locationMode === 'map' ? mapQuote.osrmDurationSec : undefined,

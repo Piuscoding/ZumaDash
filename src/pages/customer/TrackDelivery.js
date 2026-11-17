@@ -31,6 +31,7 @@ const TrackDelivery = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [saveMoneyMode, setSaveMoneyMode] = useState('user_choice');
+  const [showRemoteEntry, setShowRemoteEntry] = useState(true);
   const { user } = useAuth();
   const [job, setJob] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -81,6 +82,7 @@ const TrackDelivery = () => {
       try {
         const res = await api.get('/api/settings');
         setSaveMoneyMode(res.data.settings?.grouping?.saveMoneyMode || 'user_choice');
+        setShowRemoteEntry(res.data.settings?.grouping?.showRemoteEntryOnRiderStops !== false);
       } catch (_) {}
     })();
   }, []);
@@ -251,6 +253,18 @@ const TrackDelivery = () => {
 
   const completeNextStop = async () => {
     if (!job) return;
+    // Solo (single pickup + dropoff): use classic status pipeline, not complete-stop
+    if (!(job.isMultiStop || job.bundleId || job.batchScoped)) {
+      const st = job.status;
+      if (st === 'accepted' || st === 'live') {
+        return updateStatus('picked');
+      }
+      if (st === 'picked') {
+        return updateStatus('pending_clearance');
+      }
+      setMessage('Use Start (LIVE) / Mark PICKED / Mark DELIVERED for this job');
+      return;
+    }
     setActionLoading(true);
     setMessage('');
     try {
@@ -367,6 +381,12 @@ const TrackDelivery = () => {
   const currentIdx = statusSteps.indexOf(job.status);
   const riderId = job.rider?._id || job.rider;
   const isRider = user?.role === 'rider' && String(riderId) === String(user?.id || user?._id);
+  // True multi-stop / grouped batch only — solo jobs get synthetic pickup+dropoff in stops[]
+  // for display/map and must NOT use complete-stop (server requires isMultiStop or bundleId).
+  const usesSequentialStops = !!(
+    job &&
+    (job.isMultiStop || job.bundleId || job.batchScoped)
+  );
   const isCustomer = user?.role === 'customer';
   const isAdmin = user?.role === 'admin';
 
@@ -573,8 +593,15 @@ const TrackDelivery = () => {
             <span className="badge badge-info">{String(job.status).replace(/_/g, ' ')}</span>
           </div>
 
-          {/* PART 1 – Map track (map mode only) */}
-          {((job.locationMode === 'map') || (job.pickup?.coordinates?.lat && job.dropoff?.coordinates?.lat)) && (
+          {/* Map when any pin has coordinates (map stops and/or primary map legs). Text-only stops simply have no pin. */}
+          {(
+            job.locationMode === 'map' ||
+            (job.pickup?.coordinates?.lat && job.dropoff?.coordinates?.lat) ||
+            (Array.isArray(job.stops) &&
+              job.stops.some(
+                (st) => st?.coordinates?.lat != null && st?.coordinates?.lng != null
+              ))
+          ) && (
             <div style={{ marginTop: 16, position: 'relative' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                 <span style={{ fontSize: 13, fontWeight: 600 }}>
@@ -603,8 +630,8 @@ const TrackDelivery = () => {
                 pickup={job.pickup?.coordinates}
                 dropoff={job.dropoff?.coordinates}
                 stops={Array.isArray(job.stops) ? job.stops : []}
-                routeGeometry={job.locationMode === 'map' ? job.routeGeometry : null}
-                activeLegGeometry={job.locationMode === 'map' ? activeLegGeometry : null}
+                routeGeometry={job.routeGeometry || null}
+                activeLegGeometry={isRider ? activeLegGeometry || null : null}
                 riderLocation={liveLoc || job.riderLastLocation}
                 riderMarkerUrl={mapMeta.riderMarkerUrl}
                 tileUrl={mapMeta.tileUrl}
@@ -612,7 +639,12 @@ const TrackDelivery = () => {
               />
             </div>
           )}
-          {job.locationMode !== 'map' && !(job.pickup?.coordinates?.lat && job.dropoff?.coordinates?.lat) && (
+          {job.locationMode !== 'map' &&
+            !(job.pickup?.coordinates?.lat && job.dropoff?.coordinates?.lat) &&
+            !(
+              Array.isArray(job.stops) &&
+              job.stops.some((st) => st?.coordinates?.lat != null && st?.coordinates?.lng != null)
+            ) && (
             <p style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 12 }}>
               Map not available for this delivery (text / landmark mode). Tracking uses status, photos and WhatsApp.
             </p>
@@ -696,9 +728,9 @@ const TrackDelivery = () => {
             <div style={{ marginBottom: 8 }}>
               <strong>Drop-off:</strong> {job.dropoff?.description}
             </div>
-            {job.isMultiStop && Array.isArray(job.stops) && job.stops.length > 0 && (
+            {(job.isMultiStop || job.batchScoped) && Array.isArray(job.stops) && job.stops.length > 0 && (
               <div style={{ marginTop: 12, padding: 12, background: 'var(--gray-50)', borderRadius: 8 }}>
-                <strong style={{ fontSize: 13 }}>All stops</strong>
+                <strong style={{ fontSize: 13 }}>{job.batchScoped ? 'Batch stops' : 'All stops'}</strong>
                 <ol style={{ margin: '8px 0 0', paddingLeft: 18 }}>
                   {job.stops
                     .slice()
@@ -711,6 +743,50 @@ const TrackDelivery = () => {
                       </li>
                     ))}
                 </ol>
+              </div>
+            )}
+            {isRider && (job.batchScoped || job.bundleId) && (
+              <div
+                style={{
+                  marginTop: 12,
+                  padding: 12,
+                  borderRadius: 10,
+                  background: '#ecfdf5',
+                  border: '1px solid #a7f3d0',
+                }}
+              >
+                <div style={{ fontSize: 12, color: 'var(--gray-600)', marginBottom: 6 }}>
+                  Grouped trip {job.tripId ? `· ${job.tripId}` : ''} ·{' '}
+                  {job.tripStopCount || (job.stops || []).length} stops
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 4 }}>
+                  <span>Trip total (customers)</span>
+                  <strong>
+                    ₦
+                    {Number(
+                      job.tripTotalCollected != null && job.tripTotalCollected > 0
+                        ? job.tripTotalCollected
+                        : job.finalGroupedPrice || job.agreedPrice || job.suggestedPrice || 0
+                    ).toLocaleString()}
+                  </strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 15, fontWeight: 800 }}>
+                  <span>Your trip earning</span>
+                  <span style={{ color: 'var(--primary)' }}>
+                    ₦
+                    {Number(
+                      job.tripRiderEarning != null && job.tripRiderEarning > 0
+                        ? job.tripRiderEarning
+                        : job.riderEarning || 0
+                    ).toLocaleString()}
+                  </span>
+                </div>
+                {Number(job.tripCashToCollect) > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginTop: 6 }}>
+                    <span>Cash to collect</span>
+                    <strong>₦{Number(job.tripCashToCollect).toLocaleString()}</strong>
+                  </div>
+                )}
               </div>
             )}
             {job.merchantSelfBooking ? (
@@ -978,11 +1054,13 @@ const TrackDelivery = () => {
               !['completed', 'cancelled'].includes(job.status))) && (
           <div className="card" style={{ marginTop: 12 }}>
             <h3 style={{ fontSize: 15, marginBottom: 12 }}>
-              {(job.isMultiStop || job.bundleId || (Array.isArray(job.stops) && job.stops.length > 1))
-                ? 'Stops (in order)'
-                : 'Update status'}
+              {job.batchScoped
+                ? 'Batch stops (in order)'
+                : usesSequentialStops
+                  ? 'Stops (in order)'
+                  : 'Update status'}
             </h3>
-            {(job.isMultiStop || job.bundleId || (Array.isArray(job.stops) && job.stops.length > 1)) &&
+            {(usesSequentialStops) &&
             Array.isArray(job.stops) &&
             job.stops.length > 0 ? (
               <>
@@ -1015,6 +1093,27 @@ const TrackDelivery = () => {
                           <span style={{ textTransform: 'capitalize' }}>{st.type}</span>
                           {st.sequence != null ? ` #${st.sequence}` : ''}: {(st.description || '—').slice(0, 72)}
                           {done ? ' · Done' : isNext ? ' · Next' : ''}
+                          {showRemoteEntry &&
+                            (st.entryJunction || st.ward) &&
+                            (
+                              <div
+                                style={{
+                                  fontSize: 12,
+                                  fontWeight: 400,
+                                  color: 'var(--gray-600)',
+                                  marginTop: 2,
+                                }}
+                              >
+                                {st.entryJunction ? (
+                                  <>
+                                    Via: {st.entryJunction}
+                                    {st.ward ? ` · ${st.ward}` : ''}
+                                  </>
+                                ) : (
+                                  st.ward
+                                )}
+                              </div>
+                            )}
                         </li>
                       );
                     })}
@@ -1088,7 +1187,12 @@ const TrackDelivery = () => {
 
       {/* NOW-18 lightbox */}
       
-      {mapFullscreen && job?.locationMode === 'map' && (
+      {mapFullscreen &&
+        job &&
+        (job.locationMode === 'map' ||
+          (job.pickup?.coordinates?.lat && job.dropoff?.coordinates?.lat) ||
+          (Array.isArray(job.stops) &&
+            job.stops.some((st) => st?.coordinates?.lat != null && st?.coordinates?.lng != null))) && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 10000, background: '#000' }}>
           <button
             type="button"
@@ -1102,8 +1206,8 @@ const TrackDelivery = () => {
             pickup={job.pickup?.coordinates}
             dropoff={job.dropoff?.coordinates}
             stops={Array.isArray(job.stops) ? job.stops : []}
-            routeGeometry={job.locationMode === 'map' ? job.routeGeometry : null}
-            activeLegGeometry={job.locationMode === 'map' ? activeLegGeometry : null}
+            routeGeometry={job.routeGeometry || null}
+            activeLegGeometry={isRider ? activeLegGeometry || null : null}
             riderLocation={liveLoc || job.riderLastLocation}
             riderMarkerUrl={mapMeta.riderMarkerUrl}
             tileUrl={mapMeta.tileUrl}

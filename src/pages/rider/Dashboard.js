@@ -33,7 +33,28 @@ const RiderDashboard = () => {
     fetchJobs();
   }, []);
 
-  const activeJobs = jobs.filter((j) => ['accepted', 'live', 'picked'].includes(j.status));
+  const activeRaw = jobs.filter((j) => ['accepted', 'live', 'picked'].includes(j.status));
+  // One card per grouped trip (bundleId); solos stay individual
+  const activeJobs = [];
+  const seenBundles = new Set();
+  for (const j of activeRaw) {
+    const bid = j.bundleId ? String(j.bundleId) : null;
+    if (bid) {
+      if (seenBundles.has(bid)) continue;
+      seenBundles.add(bid);
+      const siblings = activeRaw.filter((x) => String(x.bundleId) === bid);
+      const earnSum = siblings.reduce((sum, x) => sum + (Number(x.riderEarning) || 0), 0);
+      activeJobs.push({
+        ...j,
+        _grouped: true,
+        _groupCount: siblings.length,
+        _groupEarning: earnSum || Number(j.tripRiderEarning) || Number(j.riderEarning) || 0,
+        _groupLabel: `Grouped · ${siblings.length} jobs`,
+      });
+    } else {
+      activeJobs.push(j);
+    }
+  }
   const completedCount = jobs.filter((j) => j.status === 'completed').length;
 
   const stats = [
@@ -192,14 +213,22 @@ const RiderDashboard = () => {
             {activeJobs.map((job) => (
               <Link key={job._id} to={`/track/${job._id}`} className="card" style={{ display: 'block' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, gap: 8 }}>
-                  <strong style={{ wordBreak: 'break-all' }}>{job.jobId}</strong>
+                  <strong style={{ wordBreak: 'break-all' }}>
+                    {job._grouped ? job._groupLabel || 'Grouped trip' : job.jobId}
+                  </strong>
                   <span className="badge badge-info">{job.status}</span>
                 </div>
                 <p style={{ fontSize: 13, color: 'var(--gray-500)' }}>
-                  {(job.pickup?.description || '').slice(0, 50)} → {(job.dropoff?.description || '').slice(0, 40)}
+                  {job._grouped
+                    ? `${job._groupCount} deliveries in one batch · open track to see all stops`
+                    : `${(job.pickup?.description || '').slice(0, 50)} → ${(job.dropoff?.description || '').slice(0, 40)}`}
                 </p>
                 <p style={{ fontSize: 14, fontWeight: 600, marginTop: 6 }}>
-                  Your earning: ₦{job.riderEarning?.toLocaleString() || '0'}
+                  Your earning: ₦
+                  {(job._grouped
+                    ? job._groupEarning
+                    : job.riderEarning
+                  )?.toLocaleString?.() || Number(job._grouped ? job._groupEarning : job.riderEarning || 0).toLocaleString()}
                 </p>
               </Link>
             ))}

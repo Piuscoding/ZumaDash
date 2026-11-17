@@ -27,26 +27,90 @@ const JobHistory = () => {
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {jobs.map((j) => (
-              <Link key={j._id} to={`/track/${j._id}`} className="card" style={{ padding: 14, display: 'block', color: 'inherit' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <strong style={{ fontSize: 14 }}>{j.jobId}</strong>
-                  <span className="badge badge-info">{j.status?.replace('_', ' ')}</span>
-                </div>
-                <div style={{ fontSize: 13, color: 'var(--gray-600)', marginTop: 6 }}>
-                  {(j.pickup?.description || '').slice(0, 40)} → {(j.dropoff?.description || '').slice(0, 40)}
-                </div>
-                <div style={{ marginTop: 8, fontSize: 13, display: 'flex', justifyContent: 'space-between' }}>
-                  <span>
-                    ₦{(j.agreedPrice || j.suggestedPrice || 0).toLocaleString()}
-                    {j.riderEarning > 0 && (
-                      <span style={{ color: 'var(--primary)', marginLeft: 8 }}>Earn ₦{j.riderEarning.toLocaleString()}</span>
-                    )}
-                  </span>
-                  <span style={{ color: 'var(--gray-500)' }}>{new Date(j.createdAt).toLocaleDateString()}</span>
-                </div>
-              </Link>
-            ))}
+            {(() => {
+              const rows = [];
+              const seen = new Set();
+              for (const j of jobs) {
+                const bid = j.bundleId ? String(j.bundleId) : null;
+                if (bid) {
+                  if (seen.has(bid)) continue;
+                  seen.add(bid);
+                  const legs = jobs.filter((x) => String(x.bundleId) === bid);
+                  const agreed = legs.reduce(
+                    (s, x) =>
+                      s +
+                      (Number(x.finalGroupedPrice) ||
+                        Number(x.agreedPrice) ||
+                        Number(x.suggestedPrice) ||
+                        0),
+                    0
+                  );
+                  let tripEarn =
+                    Number(j.tripRiderEarning) ||
+                    legs.reduce((sum, x) => sum + (Number(x.tripRiderEarning) || 0), 0) /
+                      Math.max(1, legs.length) ||
+                    legs.reduce((sum, x) => sum + (Number(x.riderEarning) || 0), 0);
+                  if (!(tripEarn > 0) && agreed > 0) {
+                    tripEarn = Math.round(agreed * 0.85);
+                  }
+                  rows.push({ key: bid, kind: 'grouped', j, legs, tripEarn, agreed });
+                } else {
+                  const soloAgreed = Number(j.agreedPrice) || Number(j.suggestedPrice) || 0;
+                  let soloEarn = Number(j.riderEarning) || 0;
+                  if (
+                    !(soloEarn > 0) &&
+                    soloAgreed > 0 &&
+                    (j.status === 'completed' || j.status === 'pending_clearance')
+                  ) {
+                    const platform =
+                      Number(j.platformTake) ||
+                      Number(j.commissionAmount) ||
+                      Math.round(soloAgreed * 0.15);
+                    soloEarn = Math.max(0, soloAgreed - platform);
+                  }
+                  rows.push({
+                    key: String(j._id),
+                    kind: 'solo',
+                    j,
+                    tripEarn: soloEarn,
+                    agreed: soloAgreed,
+                  });
+                }
+              }
+              return rows.map((row) => (
+                <Link
+                  key={row.key}
+                  to={`/track/${row.j._id}`}
+                  className="card"
+                  style={{ padding: 14, display: 'block', color: 'inherit' }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <strong style={{ fontSize: 14 }}>
+                      {row.kind === 'grouped'
+                        ? `Grouped · ${row.legs.length} jobs${row.j.tripCode ? ` · ${row.j.tripCode}` : ''}`
+                        : row.j.jobId}
+                    </strong>
+                    <span className="badge badge-info">{String(row.j.status || '').replace('_', ' ')}</span>
+                  </div>
+                  <div style={{ fontSize: 13, color: 'var(--gray-600)', marginTop: 6 }}>
+                    {row.kind === 'grouped'
+                      ? (row.legs || []).map((leg) => leg.jobId).join(' · ')
+                      : `${(row.j.pickup?.description || '').slice(0, 40)} → ${(row.j.dropoff?.description || '').slice(0, 40)}`}
+                  </div>
+                  <div style={{ marginTop: 8, fontSize: 13, display: 'flex', justifyContent: 'space-between' }}>
+                    <span>
+                      ₦{(row.agreed || 0).toLocaleString()}
+                      <span style={{ color: 'var(--primary)', marginLeft: 8 }}>
+                        Earn ₦{(row.tripEarn || 0).toLocaleString()}
+                      </span>
+                    </span>
+                    <span style={{ color: 'var(--gray-500)' }}>
+                      {row.j.createdAt ? new Date(row.j.createdAt).toLocaleDateString() : ''}
+                    </span>
+                  </div>
+                </Link>
+              ));
+            })()}
           </div>
         )}
       </div>

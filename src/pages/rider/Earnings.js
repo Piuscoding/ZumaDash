@@ -178,6 +178,72 @@ const Earnings = () => {
     .filter((w) => String(w.status || '').toLowerCase() !== 'rejected')
     .reduce((s, w) => s + (Number(w.amount) || 0), 0);
 
+
+  const historyRows = (() => {
+    const rows = [];
+    const seen = new Set();
+    for (const job of jobs) {
+      const bid = job.bundleId ? String(job.bundleId) : null;
+      if (bid) {
+        if (seen.has(bid)) continue;
+        seen.add(bid);
+        const legs = jobs.filter((x) => String(x.bundleId) === bid);
+        const agreed = legs.reduce(
+          (s, x) =>
+            s +
+            (Number(x.finalGroupedPrice) ||
+              Number(x.agreedPrice) ||
+              Number(x.suggestedPrice) ||
+              0),
+          0
+        );
+        let tripEarn =
+          Number(job.tripRiderEarning) ||
+          legs.reduce((sum, x) => sum + (Number(x.tripRiderEarning) || 0), 0) / Math.max(1, legs.length) ||
+          legs.reduce((sum, x) => sum + (Number(x.riderEarning) || 0), 0);
+        if (!(tripEarn > 0) && agreed > 0) {
+          // Historical zeroed legs: show platform-standard 85% of grouped total
+          tripEarn = Math.round(agreed * 0.85);
+        }
+        rows.push({
+          key: bid,
+          kind: 'grouped',
+          job,
+          legs,
+          tripEarn,
+          agreed,
+          status: job.status,
+          tripCode: job.tripCode || job.tripId || null,
+          createdAt: job.createdAt,
+          paymentMethod: job.paymentMethod,
+          trackId: job._id,
+        });
+      } else {
+        const soloAgreed = Number(job.agreedPrice) || Number(job.suggestedPrice) || 0;
+        let soloEarn = Number(job.riderEarning) || 0;
+        if (!(soloEarn > 0) && soloAgreed > 0 && (job.status === 'completed' || job.status === 'pending_clearance')) {
+          const platform =
+            Number(job.platformTake) ||
+            Number(job.commissionAmount) ||
+            Math.round(soloAgreed * 0.15);
+          soloEarn = Math.max(0, soloAgreed - platform);
+        }
+        rows.push({
+          key: String(job._id),
+          kind: 'solo',
+          job,
+          tripEarn: soloEarn,
+          agreed: soloAgreed,
+          status: job.status,
+          createdAt: job.createdAt,
+          paymentMethod: job.paymentMethod,
+          trackId: job._id,
+        });
+      }
+    }
+    return rows;
+  })();
+
   const available = Number(user?.availableBalance || 0);
   const amountNum = Number(withdrawAmount) || 0;
   const totalDebit = amountNum > 0 ? amountNum + WITHDRAW_FEE : 0;
@@ -450,10 +516,10 @@ const Earnings = () => {
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 24 }}>
-            {jobs.map((job) => (
+            {historyRows.map((row) => (
               <Link
-                key={job._id}
-                to={`/track/${job._id}`}
+                key={row.key}
+                to={`/track/${row.trackId}`}
                 className="card"
                 style={{ display: 'block', padding: 16, textDecoration: 'none', color: 'inherit' }}
               >
@@ -466,13 +532,24 @@ const Earnings = () => {
                     flexWrap: 'wrap',
                   }}
                 >
-                  <strong style={{ fontSize: 14 }}>{job.jobId}</strong>
-                  <span className="badge badge-info">{String(job.status || '').replace(/_/g, ' ')}</span>
+                  <strong style={{ fontSize: 14 }}>
+                    {row.kind === 'grouped'
+                      ? `Grouped · ${row.legs.length} jobs${row.tripCode ? ` · ${row.tripCode}` : ''}`
+                      : row.job.jobId}
+                  </strong>
+                  <span className="badge badge-info">{String(row.status || '').replace(/_/g, ' ')}</span>
                 </div>
                 <div style={{ fontSize: 13, color: 'var(--gray-500)', marginBottom: 6 }}>
-                  {job.createdAt ? new Date(job.createdAt).toLocaleString() : ''}
-                  {job.paymentMethod ? ` · ${job.paymentMethod === 'bank_transfer' ? 'Bank' : 'COD'}` : ''}
+                  {row.createdAt ? new Date(row.createdAt).toLocaleString() : ''}
+                  {row.paymentMethod
+                    ? ` · ${row.paymentMethod === 'bank_transfer' ? 'Bank' : 'COD'}`
+                    : ''}
                 </div>
+                {row.kind === 'grouped' && (
+                  <div style={{ fontSize: 12, color: 'var(--gray-500)', marginBottom: 6 }}>
+                    {(row.legs || []).map((leg) => leg.jobId).join(' · ')}
+                  </div>
+                )}
                 <div
                   style={{
                     display: 'flex',
@@ -482,16 +559,14 @@ const Earnings = () => {
                     flexWrap: 'wrap',
                   }}
                 >
-                  <span>
-                    Agreed: ₦{(job.agreedPrice || job.suggestedPrice || 0).toLocaleString()}
-                  </span>
+                  <span>Agreed: ₦{(row.agreed || 0).toLocaleString()}</span>
                   <span style={{ fontWeight: 600, color: 'var(--primary)' }}>
-                    You: ₦{(job.riderEarning || 0).toLocaleString()}
+                    You: ₦{(row.tripEarn || 0).toLocaleString()}
                   </span>
                 </div>
-                {Number(job.commissionAmount) > 0 && (
+                {row.kind === 'solo' && Number(row.job.commissionAmount) > 0 && (
                   <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 4 }}>
-                    Commission: ₦{Number(job.commissionAmount).toLocaleString()}
+                    Commission: ₦{Number(row.job.commissionAmount).toLocaleString()}
                   </div>
                 )}
               </Link>

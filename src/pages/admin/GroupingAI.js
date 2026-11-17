@@ -19,6 +19,11 @@ const defaultGrouping = {
   maxWaitMinutesCustomerCanChoose: 30,
   automaticPoolWindowMinutes: 12,
   maxStopsPerPrivateTrip: 5,
+  maxCustomersPerGroupBatch: 3,
+  maxStopsPerGroupBatch: 8,
+  strictClusterBatching: true,
+  strictSpineRepair: true,
+  showRemoteEntryOnRiderStops: true,
   textModeFloor: 1500,
   maxRidersToConsider: 5,
   offerTimeoutSeconds: 90,
@@ -43,6 +48,11 @@ const defaultAiWorker = {
 
 const GroupingAI = () => {
   const [grouping, setGrouping] = useState({ ...defaultGrouping });
+  const [systemPrompt, setSystemPrompt] = useState('');
+  const [defaultSystemPrompt, setDefaultSystemPrompt] = useState('');
+  const [spineNodesJson, setSpineNodesJson] = useState('[]');
+  const [wardEntriesJson, setWardEntriesJson] = useState('[]');
+  const [routingMeta, setRoutingMeta] = useState(null);
   const [aiWorker, setAiWorker] = useState({ ...defaultAiWorker });
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [clearApiKey, setClearApiKey] = useState(false);
@@ -75,6 +85,11 @@ const GroupingAI = () => {
         maxWaitMinutesCustomerCanChoose: Number(g.maxWaitMinutesCustomerCanChoose) || 30,
         automaticPoolWindowMinutes: Number(g.automaticPoolWindowMinutes) || 12,
         maxStopsPerPrivateTrip: Number(g.maxStopsPerPrivateTrip) || 5,
+        maxCustomersPerGroupBatch: Number(g.maxCustomersPerGroupBatch) || 3,
+        maxStopsPerGroupBatch: Number(g.maxStopsPerGroupBatch) || 8,
+        strictClusterBatching: g.strictClusterBatching !== false,
+        strictSpineRepair: g.strictSpineRepair !== false,
+        showRemoteEntryOnRiderStops: g.showRemoteEntryOnRiderStops !== false,
         textModeFloor: Number(g.textModeFloor) || 1500,
         maxRidersToConsider: Number(g.maxRidersToConsider) || 5,
         offerTimeoutSeconds: Number(g.offerTimeoutSeconds) || 90,
@@ -105,6 +120,12 @@ const GroupingAI = () => {
       }
       setApiKeyInput('');
       setClearApiKey(false);
+      setSystemPrompt(a.systemPrompt || '');
+      setDefaultSystemPrompt((s.routingMeta && s.routingMeta.defaultSystemPrompt) || '');
+      setRoutingMeta(s.routingMeta || null);
+      const ck = s.corridorKnowledge || {};
+      setSpineNodesJson(JSON.stringify(ck.spineNodes || [], null, 2));
+      setWardEntriesJson(JSON.stringify(ck.wardEntries || [], null, 2));
     } catch (e) {
       setError(e.response?.data?.message || e.message || 'Failed to load settings');
     } finally {
@@ -185,6 +206,17 @@ const GroupingAI = () => {
           maxWaitMinutesCustomerCanChoose: Number(grouping.maxWaitMinutesCustomerCanChoose),
           automaticPoolWindowMinutes: Number(grouping.automaticPoolWindowMinutes),
           maxStopsPerPrivateTrip: Number(grouping.maxStopsPerPrivateTrip),
+          maxCustomersPerGroupBatch: Math.min(
+            10,
+            Math.max(1, Number(grouping.maxCustomersPerGroupBatch) || 3)
+          ),
+          maxStopsPerGroupBatch: Math.min(
+            30,
+            Math.max(2, Number(grouping.maxStopsPerGroupBatch) || 8)
+          ),
+          strictClusterBatching: !!grouping.strictClusterBatching,
+          strictSpineRepair: !!grouping.strictSpineRepair,
+          showRemoteEntryOnRiderStops: !!grouping.showRemoteEntryOnRiderStops,
           textModeFloor: Number(grouping.textModeFloor),
           maxRidersToConsider: Number(grouping.maxRidersToConsider),
           offerTimeoutSeconds: Number(grouping.offerTimeoutSeconds),
@@ -201,8 +233,32 @@ const GroupingAI = () => {
           provider: aiWorker.useGroqAsDefault || aiWorker.provider === 'groq' ? 'groq' : 'openrouter',
           useGroqAsDefault: !!aiWorker.useGroqAsDefault,
           groqModelId: aiWorker.groqModelId || 'qwen/qwen3.8-27b',
+          systemPrompt: systemPrompt || '',
+        },
+        corridorKnowledge: {
+          spineNodes: (() => {
+            try {
+              const parsed = JSON.parse(spineNodesJson || '[]');
+              return Array.isArray(parsed) ? parsed : [];
+            } catch (_) {
+              return null;
+            }
+          })(),
+          wardEntries: (() => {
+            try {
+              const parsed = JSON.parse(wardEntriesJson || '[]');
+              return Array.isArray(parsed) ? parsed : [];
+            } catch (_) {
+              return null;
+            }
+          })(),
         },
       };
+      if (payload.corridorKnowledge.spineNodes === null || payload.corridorKnowledge.wardEntries === null) {
+        setError('Corridor knowledge JSON is invalid. Fix spine or ward JSON before saving.');
+        setSaving(false);
+        return;
+      }
       if (clearApiKey) {
         payload.aiWorker.clearApiKey = true;
         payload.aiWorker.openRouterApiKey = '';
@@ -431,6 +487,83 @@ const GroupingAI = () => {
                   value={grouping.maxStopsPerPrivateTrip}
                   onChange={(e) => setG('maxStopsPerPrivateTrip', e.target.value)}
                 />
+              </div>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label>Max customers per group batch</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={grouping.maxCustomersPerGroupBatch}
+                  onChange={(e) =>
+                    setG(
+                      'maxCustomersPerGroupBatch',
+                      e.target.value === '' ? '' : Number(e.target.value)
+                    )
+                  }
+                />
+                <small style={{ fontSize: 12, color: 'var(--gray-500)' }}>
+                  Default 3. Same-axis pool jobs pack into batches of at most this many customers.
+                </small>
+              </div>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label>Max stops per group batch</label>
+                <input
+                  type="number"
+                  min={2}
+                  max={30}
+                  value={grouping.maxStopsPerGroupBatch}
+                  onChange={(e) =>
+                    setG(
+                      'maxStopsPerGroupBatch',
+                      e.target.value === '' ? '' : Number(e.target.value)
+                    )
+                  }
+                />
+                <small style={{ fontSize: 12, color: 'var(--gray-500)' }}>
+                  Default 8. Total pickups + drop-offs across jobs in one batch. Both caps apply.
+                </small>
+              </div>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label>Strict ward-cluster batching</label>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={() => setG('strictClusterBatching', !grouping.strictClusterBatching)}
+                  style={{ width: '100%' }}
+                >
+                  {grouping.strictClusterBatching ? 'ON — same cluster only (A/B/C)' : 'OFF — axis-only packing'}
+                </button>
+                <small style={{ fontSize: 12, color: 'var(--gray-500)' }}>
+                  ON (recommended): do not mix Western (A), Central-East (B), and Far North (C) clusters in one rider batch.
+                </small>
+              </div>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label>Strict spine road-order repair</label>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={() => setG('strictSpineRepair', !grouping.strictSpineRepair)}
+                  style={{ width: '100%' }}
+                >
+                  {grouping.strictSpineRepair ? 'ON — corridor rank enforced after AI' : 'OFF — pickup-first only'}
+                </button>
+                <small style={{ fontSize: 12, color: 'var(--gray-500)' }}>
+                  ON (recommended): after AI, re-sort each phase by spine rank (Jordan → Pottery → Dam). Pickup-before-dropoff always stays on.
+                </small>
+              </div>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label>Show remote entry on rider stops (Step 7)</label>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={() =>
+                    setG('showRemoteEntryOnRiderStops', !grouping.showRemoteEntryOnRiderStops)
+                  }
+                  style={{ width: '100%' }}
+                >
+                  {grouping.showRemoteEntryOnRiderStops ? 'ON' : 'OFF'}
+                </button>
               </div>
             </div>
           </div>
@@ -708,6 +841,78 @@ const GroupingAI = () => {
                 Used once if the primary model fails
               </small>
             </div>
+          </div>
+
+          {/* Step 6 – Routing knowledge & prompt */}
+          <div className="card" style={{ marginBottom: 20, padding: 16 }}>
+            <h3 style={{ marginTop: 0 }}>Corridor knowledge & routing prompt</h3>
+            {routingMeta && (
+              <p style={{ fontSize: 13, color: 'var(--gray-600)' }}>
+                Spine seed v{routingMeta.spineVersion} ({routingMeta.defaultSpineNodeCount} nodes) ·
+                Wards seed v{routingMeta.wardsVersion} ({routingMeta.defaultWardEntryCount} entries) ·
+                Overrides: {routingMeta.overrideSpineCount} spine / {routingMeta.overrideWardCount} wards
+              </p>
+            )}
+            <div className="form-group">
+              <label>AI system prompt (multi-stop order)</label>
+              <textarea
+                rows={8}
+                value={systemPrompt}
+                onChange={(e) => setSystemPrompt(e.target.value)}
+                placeholder="Leave empty to use the built-in corridor prompt"
+                style={{ width: '100%', fontFamily: 'monospace', fontSize: 12 }}
+              />
+              <button
+                type="button"
+                className="btn btn-outline"
+                style={{ marginTop: 8 }}
+                onClick={() => setSystemPrompt(defaultSystemPrompt || '')}
+              >
+                Reset to default prompt
+              </button>
+            </div>
+            <div className="form-group">
+              <label>Spine node overrides (JSON array, merged by id)</label>
+              <textarea
+                rows={6}
+                value={spineNodesJson}
+                onChange={(e) => setSpineNodesJson(e.target.value)}
+                style={{ width: '100%', fontFamily: 'monospace', fontSize: 12 }}
+              />
+              <small style={{ fontSize: 12, color: 'var(--gray-500)' }}>
+                Each object: id, label, axis, rank, spur, aliases[]. Empty [] = code defaults only.
+              </small>
+            </div>
+            <div className="form-group">
+              <label>Ward / remote entry overrides (JSON array, merged by id)</label>
+              <textarea
+                rows={6}
+                value={wardEntriesJson}
+                onChange={(e) => setWardEntriesJson(e.target.value)}
+                style={{ width: '100%', fontFamily: 'monospace', fontSize: 12 }}
+              />
+              <small style={{ fontSize: 12, color: 'var(--gray-500)' }}>
+                Each object: id, cluster (A|B|C), axis, ward, settlement, entryJunction, aliases[]. Set enabled:false to disable a seed id.
+              </small>
+            </div>
+            <button
+              type="button"
+              className="btn btn-outline"
+              onClick={async () => {
+                try {
+                  const res = await api.get('/api/settings/corridor-defaults');
+                  const spine = res.data.spineNodes || [];
+                  const wards = res.data.wardEntries || [];
+                  setSpineNodesJson(JSON.stringify(spine, null, 2));
+                  setWardEntriesJson(JSON.stringify(wards, null, 2));
+                  setMessage('Loaded full seed tables into editors. Review, edit, then Save.');
+                } catch (e) {
+                  setError(e.response?.data?.message || e.message || 'Failed to load defaults');
+                }
+              }}
+            >
+              Load full seed tables into editors
+            </button>
           </div>
 
           <button type="submit" className="btn btn-primary btn-block" disabled={saving} style={{ marginBottom: 32 }}>

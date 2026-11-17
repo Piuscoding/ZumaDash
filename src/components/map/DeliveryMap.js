@@ -101,7 +101,25 @@ const DeliveryMap = ({
     return [9.15, 7.4];
   }, [pickup, dropoff, riderLocation]);
 
-  const legBPositions = useMemo(() => geoToLatLng(routeGeometry), [routeGeometry]);
+  const legBPositions = useMemo(() => {
+    const fromGeo = geoToLatLng(routeGeometry);
+    if (fromGeo.length > 1) return fromGeo;
+    // Fallback: connect map stops + primary pickup/drop in sequence order when OSRM failed
+    const pts = [];
+    const orderedStops = (stops || [])
+      .slice()
+      .sort((a, b) => (a.sequence || 0) - (b.sequence || 0));
+    if (orderedStops.length) {
+      orderedStops.forEach((st) => {
+        const c = st.coordinates || {};
+        if (c.lat != null && c.lng != null) pts.push([Number(c.lat), Number(c.lng)]);
+      });
+    } else {
+      if (pickup?.lat != null && pickup?.lng != null) pts.push([Number(pickup.lat), Number(pickup.lng)]);
+      if (dropoff?.lat != null && dropoff?.lng != null) pts.push([Number(dropoff.lat), Number(dropoff.lng)]);
+    }
+    return pts.length > 1 ? pts : [];
+  }, [routeGeometry, stops, pickup, dropoff]);
   const legAPositions = useMemo(() => geoToLatLng(activeLegGeometry), [activeLegGeometry]);
 
   const fitPositions = useMemo(() => {

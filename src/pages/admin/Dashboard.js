@@ -79,6 +79,8 @@ const AdminDashboard = () => {
   const [exportTo, setExportTo] = useState('');
   const [pendingTransfers, setPendingTransfers] = useState([]);
   const [pendingClearances, setPendingClearances] = useState([]);
+  const [clearanceCards, setClearanceCards] = useState([]);
+  const [jobsListMode, setJobsListMode] = useState('all'); // all | solo | grouped
   const [pendingWithdraws, setPendingWithdraws] = useState([]);
   const [bankKycList, setBankKycList] = useState([]);
   const [commissionSettlements, setCommissionSettlements] = useState([]);
@@ -135,8 +137,14 @@ const AdminDashboard = () => {
       try {
         const pc = await api.get('/api/admin/payment-desk/pending-clearances');
         setPendingClearances(pc.data.jobs || []);
+        setClearanceCards(
+          Array.isArray(pc.data.clearanceCards) && pc.data.clearanceCards.length
+            ? pc.data.clearanceCards
+            : pc.data.jobs || []
+        );
       } catch (_) {
         setPendingClearances([]);
+        setClearanceCards([]);
       }
       try {
         const pw = await api.get('/api/admin/payment-desk/withdraws?status=pending');
@@ -1168,7 +1176,86 @@ const AdminDashboard = () => {
                 </div>
                 )}
 
-                {jobs.slice(0, 40).map((j) => (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+                  {[
+                    { id: 'all', label: 'All jobs' },
+                    { id: 'solo', label: 'Solo jobs' },
+                    { id: 'grouped', label: 'Grouped trips' },
+                  ].map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      className={jobsListMode === opt.id ? 'btn btn-primary' : 'btn btn-secondary'}
+                      style={{ padding: '6px 12px', fontSize: 12 }}
+                      onClick={() => setJobsListMode(opt.id)}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+
+                {(() => {
+                  const soloJobs = jobs.filter((j) => !j.bundleId);
+                  const groupedMap = new Map();
+                  jobs.filter((j) => j.bundleId).forEach((j) => {
+                    const k = String(j.bundleId);
+                    if (!groupedMap.has(k)) groupedMap.set(k, []);
+                    groupedMap.get(k).push(j);
+                  });
+                  const groupedList = [...groupedMap.entries()].map(([bid, legs]) => ({
+                    bundleId: bid,
+                    legs,
+                    head: legs[0],
+                    tripTotal: legs.reduce(
+                      (sum, x) =>
+                        sum + (Number(x.finalGroupedPrice) || Number(x.agreedPrice) || Number(x.suggestedPrice) || 0),
+                      0
+                    ),
+                  }));
+                  const showSolo = jobsListMode === 'all' || jobsListMode === 'solo';
+                  const showGrouped = jobsListMode === 'all' || jobsListMode === 'grouped';
+                  return (
+                    <>
+                      {showGrouped && groupedList.length > 0 && (
+                        <div style={{ marginBottom: 16 }}>
+                          <h3 style={{ fontSize: 15, margin: '0 0 10px' }}>
+                            Grouped deliveries ({groupedList.length})
+                          </h3>
+                          {groupedList.slice(0, 40).map((g) => (
+                            <div key={g.bundleId} className="card" style={{ padding: 12, marginBottom: 8, borderLeft: '4px solid var(--primary)' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                                <div>
+                                  <strong>Grouped · {g.legs.length} jobs</strong>
+                                  <span className="badge badge-info" style={{ marginLeft: 8 }}>{g.head?.status}</span>
+                                  <div style={{ fontSize: 13, marginTop: 6 }}>
+                                    Rider: {g.head?.rider?.name || g.head?.rider || '—'} · Trip total ₦
+                                    {g.tripTotal.toLocaleString()}
+                                  </div>
+                                  <ul style={{ margin: '8px 0 0', paddingLeft: 18, fontSize: 12 }}>
+                                    {g.legs.map((leg) => (
+                                      <li key={leg._id} style={{ marginBottom: 4 }}>
+                                        <strong>{leg.jobId}</strong> · {leg.customer?.name || 'Customer'} ·{' '}
+                                        {(leg.pickup?.description || '').slice(0, 40)} → {(leg.dropoff?.description || '').slice(0, 40)} · ₦
+                                        {(Number(leg.finalGroupedPrice) || Number(leg.agreedPrice) || Number(leg.suggestedPrice) || 0).toLocaleString()}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                  <button type="button" className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => openJobTimeline(g.head._id)}>Timeline</button>
+                                  {!['completed','cancelled'].includes(g.head?.status) && (
+                                    <button type="button" className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => cancelJobAdmin(g.head._id)}>Cancel leg</button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {showSolo && (
+                        <div>
+                          {jobsListMode !== 'solo' && <h3 style={{ fontSize: 15, margin: '0 0 10px' }}>Solo jobs</h3>}
+                          {soloJobs.slice(0, 40).map((j) => (
                   <div key={j._id} className="card" style={{ padding: 12, marginBottom: 8 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}><strong>{j.jobId}</strong><span className="badge badge-info">{j.status}</span></div>
                     <div style={{ fontSize: 13, color: 'var(--gray-500)' }}>{j.customer?.name} → {j.rider?.name || '—'}</div>
@@ -1179,7 +1266,18 @@ const AdminDashboard = () => {
                       <button className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: 12, color: 'var(--danger)' }} onClick={() => disputeAction(j._id, 'open')}>Dispute</button>
                     </div>
                   </div>
-                ))}
+                          ))}
+                          {soloJobs.length === 0 && jobsListMode !== 'grouped' && (
+                            <p style={{ color: 'var(--gray-500)', fontSize: 13 }}>No solo jobs</p>
+                          )}
+                        </div>
+                      )}
+                      {jobsListMode === 'grouped' && groupedList.length === 0 && (
+                        <p style={{ color: 'var(--gray-500)', fontSize: 13 }}>No grouped deliveries</p>
+                      )}
+                    </>
+                  );
+                })()}
                 {timelineJob && tab === 'jobs' && (
                   <div className="card" style={{ marginTop: 16, border: '2px solid var(--primary)' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
@@ -1413,32 +1511,63 @@ const AdminDashboard = () => {
                     {pendingClearances.length === 0 ? (
                       <p style={{ color: 'var(--gray-500)' }}>No pending clearances</p>
                     ) : (
-                      pendingClearances.map((j) => (
-                        <div key={j._id} className="card" style={{ marginBottom: 12, padding: 14 }}>
+                      (clearanceCards.length ? clearanceCards : pendingClearances).map((j) => (
+                        <div key={j.bundleId || j._id} className="card" style={{ marginBottom: 12, padding: 14 }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
                             <div>
-                              <strong>{j.jobId}</strong>
-                              <span className="badge badge-warning" style={{ marginLeft: 8 }}>pending clearance</span>
-                              <div style={{ fontSize: 13, marginTop: 6 }}>
-                                Rider: {j.rider?.name || '—'} · Customer: {j.customer?.name || '—'}
-                              </div>
-                              <div style={{ fontSize: 13 }}>
-                                {j.merchantSelfBooking
-                                  ? `Own-goods · Platform fee ₦${(j.commissionAmount || j.platformTake || 0).toLocaleString()} · Rider earning ₦0`
-                                  : `Earning ₦${(j.riderEarning || 0).toLocaleString()} · Commission ₦${(j.commissionAmount || 0).toLocaleString()}`}
-                                {' · '}{j.paymentMethod === 'bank_transfer' ? 'Bank' : 'COD'}
-                              </div>
-                              {j.proofPhotos?.delivered && (
-                                <a href={j.proofPhotos.delivered} target="_blank" rel="noreferrer" style={{ fontSize: 12 }}>View delivery proof</a>
+                              {j.isGroupedClearance ? (
+                                <>
+                                  <strong>Grouped trip {j.tripId || ''}</strong>
+                                  <span className="badge badge-info" style={{ marginLeft: 8 }}>
+                                    {j.legCount} jobs · pending clearance
+                                  </span>
+                                  <div style={{ fontSize: 13, marginTop: 6 }}>
+                                    Rider: {j.rider?.name || '—'} · Customers:{' '}
+                                    {(j.customerNames || []).join(', ') || '—'}
+                                  </div>
+                                  <div style={{ fontSize: 13 }}>
+                                    Trip total ₦{(j.tripTotalCollected || 0).toLocaleString()} · Rider trip earning ₦
+                                    {(j.tripRiderEarning || 0).toLocaleString()}
+                                    {' · '}
+                                    {j.paymentMethod === 'bank_transfer' ? 'Bank' : 'COD'}
+                                  </div>
+                                  <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 4 }}>
+                                    Legs: {(j.jobIds || []).join(', ')}
+                                  </div>
+                                  <p style={{ fontSize: 11, color: 'var(--gray-500)', margin: '6px 0 0' }}>
+                                    One approve releases the full trip earning once for all legs.
+                                  </p>
+                                </>
+                              ) : (
+                                <>
+                                  <strong>{j.jobId}</strong>
+                                  <span className="badge badge-warning" style={{ marginLeft: 8 }}>pending clearance</span>
+                                  <div style={{ fontSize: 13, marginTop: 6 }}>
+                                    Rider: {j.rider?.name || '—'} · Customer: {j.customer?.name || '—'}
+                                  </div>
+                                  <div style={{ fontSize: 13 }}>
+                                    {j.merchantSelfBooking
+                                      ? `Own-goods · Platform fee ₦${(j.commissionAmount || j.platformTake || 0).toLocaleString()} · Rider earning ₦0`
+                                      : `Earning ₦${(j.riderEarning || 0).toLocaleString()} · Commission ₦${(j.commissionAmount || 0).toLocaleString()}`}
+                                    {' · '}{j.paymentMethod === 'bank_transfer' ? 'Bank' : 'COD'}
+                                  </div>
+                                  {j.proofPhotos?.delivered && (
+                                    <a href={j.proofPhotos.delivered} target="_blank" rel="noreferrer" style={{ fontSize: 12 }}>View delivery proof</a>
+                                  )}
+                                </>
                               )}
                             </div>
                             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-start' }}>
                               <button className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: 12 }} onClick={() => openJobTimeline(j._id)}>Timeline</button>
-                      {!['completed','cancelled'].includes(j.status) && (
-                        <button type="button" className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => cancelJobAdmin(j._id)}>Cancel job</button>
-                      )}
-                              <button className="btn btn-primary" style={{ padding: '8px 12px', fontSize: 12 }} onClick={() => approveClearance(j._id)}>Approve clearance</button>
-                              <button className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: 12 }} onClick={() => rejectClearance(j._id)}>Reject</button>
+                              {!j.isGroupedClearance && !['completed','cancelled'].includes(j.status) && (
+                                <button type="button" className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => cancelJobAdmin(j._id)}>Cancel job</button>
+                              )}
+                              <button className="btn btn-primary" style={{ padding: '8px 12px', fontSize: 12 }} onClick={() => approveClearance(j._id)}>
+                                {j.isGroupedClearance ? 'Approve trip clearance' : 'Approve clearance'}
+                              </button>
+                              {!j.isGroupedClearance && (
+                                <button className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: 12 }} onClick={() => rejectClearance(j._id)}>Reject</button>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -1718,6 +1847,25 @@ const AdminDashboard = () => {
                   <div className="card" style={{ textAlign: 'center', padding: 10 }}>
                     <div style={{ fontSize: 11, color: 'var(--gray-500)' }}>Guest cancelled</div>
                     <div style={{ fontSize: 18, fontWeight: 800, color: '#991b1b' }}>{finance.period?.guestJobsFail || 0}</div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 16 }}>
+                  <div className="card" style={{ textAlign: 'center', padding: 12 }}>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--primary)' }}>{finance.period?.groupedTripsCount || 0}</div>
+                    <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Grouped trips</div>
+                  </div>
+                  <div className="card" style={{ textAlign: 'center', padding: 12 }}>
+                    <div style={{ fontSize: 18, fontWeight: 800 }}>{finance.period?.groupedJobsCount || 0}</div>
+                    <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Grouped job legs</div>
+                  </div>
+                  <div className="card" style={{ textAlign: 'center', padding: 12 }}>
+                    <div style={{ fontSize: 18, fontWeight: 800 }}>₦{(finance.period?.groupedRevenue || 0).toLocaleString()}</div>
+                    <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Grouped revenue</div>
+                  </div>
+                  <div className="card" style={{ textAlign: 'center', padding: 12 }}>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--primary)' }}>₦{(finance.period?.groupedPlatformTake || 0).toLocaleString()}</div>
+                    <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Grouped platform take</div>
                   </div>
                 </div>
 
@@ -2180,6 +2328,7 @@ const AdminDashboard = () => {
                     <option value="guest">Guest bookings (all)</option>
                     <option value="guest_success">Guest successful</option>
                     <option value="guest_fail">Guest cancelled</option>
+                    <option value="grouped">Grouped trips</option>
                     <option value="vat">VAT only</option>
                   </select>
                   <button className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: 13 }} onClick={() => loadReport(reportDays, reportSegment, reportPeriod)}>Refresh</button>
